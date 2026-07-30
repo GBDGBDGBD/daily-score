@@ -3,10 +3,10 @@
 import type { AppTab } from "@/app/lib/types";
 
 const NAV_ITEMS: Array<{ id: AppTab; label: string; icon: string }> = [
-  { id: "today", label: "今日", icon: "●" },
-  { id: "history", label: "历史", icon: "▦" },
+  { id: "today", label: "今日", icon: "✦" },
+  { id: "history", label: "历史", icon: "◫" },
   { id: "statistics", label: "统计", icon: "↗" },
-  { id: "settings", label: "设置", icon: "⚙" },
+  { id: "settings", label: "设置", icon: "◉" },
 ];
 
 interface BottomNavProps {
