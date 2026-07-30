@@ -8,7 +8,12 @@ import { HABIT_COLORS } from "@/app/lib/habitColors";
 import { getCrossedMilestone } from "@/app/lib/milestones";
 import { calculateScoreSummary } from "@/app/lib/scoring";
 import { calculateStreak, getTrend } from "@/app/lib/statistics";
-import { getScoreFeedbackCopy } from "@/app/components/TodayPage";
+import {
+  getCompactDateLabel,
+  getScoreFeedbackCopy,
+  getScoreProgressStage,
+  shouldCompactScoreCard,
+} from "@/app/components/TodayPage";
 import {
   archiveHabit,
   createDefaultHabits,
@@ -74,6 +79,18 @@ describe("展示反馈", () => {
       "不错哦😏",
       "太棒了 🎉",
     ]);
+  });
+
+  it("总分卡按阶段切换颜色，并用双阈值避免滚动抖动", () => {
+    expect([0, 29.99, 30, 59.99, 60, 89.99, 90, 99.99, 100].map(
+      getScoreProgressStage,
+    )).toEqual([0, 0, 30, 30, 60, 60, 90, 90, 100]);
+
+    expect(shouldCompactScoreCard(false, 90)).toBe(false);
+    expect(shouldCompactScoreCard(false, 91)).toBe(true);
+    expect(shouldCompactScoreCard(true, 41)).toBe(true);
+    expect(shouldCompactScoreCard(true, 40)).toBe(false);
+    expect(getCompactDateLabel("2026-07-29")).toBe("7月29日");
   });
 
   it("一次跨越多个进度阈值时只返回最高且不重复触发", () => {

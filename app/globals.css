@@ -1968,6 +1968,18 @@ input[type="range"]::-moz-range-thumb {
   initial-value: 0deg;
 }
 
+@property --score-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #6f7f95;
+}
+
+@property --score-accent-secondary {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #6f7f95;
+}
+
 body {
   font-size: var(--font-body);
   font-weight: var(--weight-regular);
@@ -3064,11 +3076,11 @@ body {
   --score-muted: #77738d;
   --score-track: #dedbe9;
   --score-border: rgba(75, 68, 109, 0.13);
-  --score-stage-0: #77749d;
-  --score-stage-30: #648b9e;
-  --score-stage-60: #4f9188;
-  --score-stage-90: #8b7697;
-  --score-stage-100: #5c927b;
+  --score-stage-0: #6f7f95;
+  --score-stage-30: #4f9188;
+  --score-stage-60: #7278a8;
+  --score-stage-90: #a8894c;
+  --score-stage-100: #5f9375;
   --shadow: 0 24px 70px rgba(66, 53, 126, 0.13);
   --shadow-small: 0 10px 30px rgba(66, 53, 126, 0.09);
   --font-page-title: 28px;
@@ -3123,11 +3135,11 @@ body {
   --score-muted: #b9b4cc;
   --score-track: #423e58;
   --score-border: rgba(210, 203, 244, 0.14);
-  --score-stage-0: #aaa4cf;
-  --score-stage-30: #82b4c8;
-  --score-stage-60: #72b9aa;
-  --score-stage-90: #bd9dc5;
-  --score-stage-100: #79b99b;
+  --score-stage-0: #9bacbd;
+  --score-stage-30: #71b8ad;
+  --score-stage-60: #a4a8dc;
+  --score-stage-90: #d1b471;
+  --score-stage-100: #85bd9b;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
   --shadow-small: 0 10px 30px rgba(0, 0, 0, 0.22);
 }
@@ -3162,11 +3174,11 @@ body {
     --score-muted: #b9b4cc;
     --score-track: #423e58;
     --score-border: rgba(210, 203, 244, 0.14);
-    --score-stage-0: #aaa4cf;
-    --score-stage-30: #82b4c8;
-    --score-stage-60: #72b9aa;
-    --score-stage-90: #bd9dc5;
-    --score-stage-100: #79b99b;
+    --score-stage-0: #9bacbd;
+    --score-stage-30: #71b8ad;
+    --score-stage-60: #a4a8dc;
+    --score-stage-90: #d1b471;
+    --score-stage-100: #85bd9b;
     --shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
     --shadow-small: 0 10px 30px rgba(0, 0, 0, 0.22);
   }
@@ -3312,32 +3324,83 @@ body {
 
 .score-hero {
   --score-accent: var(--score-stage-0);
+  --score-accent-secondary: var(--score-accent);
+  --score-dial-size: 108px;
+  --score-dial-gap: 24px;
+  --score-dot-radius: 49px;
   --progress-color: var(--score-accent);
+  position: sticky;
+  z-index: 30;
+  top: env(safe-area-inset-top);
+  display: grid;
+  width: 100%;
+  height: 194px;
+  min-height: 194px;
+  grid-template-columns: var(--score-dial-size) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  overflow: hidden;
   isolation: isolate;
-  min-height: 184px;
-  padding: 26px;
+  padding: 20px;
   border: 1px solid var(--score-border);
-  border-radius: 32px;
+  border-radius: 24px;
   background:
     radial-gradient(
       circle at 86% 16%,
-      color-mix(in srgb, var(--score-accent) 12%, transparent),
+      color-mix(in srgb, var(--score-accent) 14%, transparent),
       transparent 34%
+    ),
+    radial-gradient(
+      circle at 10% 92%,
+      color-mix(in srgb, var(--score-accent-secondary) 9%, transparent),
+      transparent 38%
     ),
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--score-surface) 92%, var(--score-accent)),
+      color-mix(in srgb, var(--score-surface) 94%, var(--score-accent)),
       var(--score-surface-raised)
     );
   color: var(--score-foreground);
   box-shadow:
-    0 18px 46px color-mix(in srgb, var(--score-accent) 10%, transparent),
+    0 16px 40px color-mix(in srgb, var(--score-accent) 9%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--surface-raised) 68%, transparent);
   transform: translateZ(0);
+  will-change: height, padding, border-radius;
+  backdrop-filter: blur(18px) saturate(1.08);
   transition:
+    --score-accent 500ms ease,
+    --score-accent-secondary 500ms ease,
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    min-height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    grid-template-columns 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    gap 280ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 380ms ease,
-    background 520ms ease,
     box-shadow 380ms ease;
+}
+
+.score-hero.is-compact {
+  --score-dial-size: 42px;
+  --score-dial-gap: 10px;
+  --score-dot-radius: 17px;
+  height: 64px;
+  min-height: 64px;
+  grid-template-columns: var(--score-dial-size) minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  background:
+    radial-gradient(
+      circle at 10% 50%,
+      color-mix(in srgb, var(--score-accent) 11%, transparent),
+      transparent 35%
+    ),
+    color-mix(in srgb, var(--score-surface-raised) 84%, transparent);
+  box-shadow:
+    0 8px 24px color-mix(in srgb, var(--score-accent) 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--surface-raised) 70%, transparent);
+  backdrop-filter: blur(22px) saturate(1.16);
 }
 
 .score-hero::before {
@@ -3355,7 +3418,8 @@ body {
   );
   content: "";
   transform: rotate(18deg);
-  animation: hero-shimmer 7s ease-in-out 1s infinite;
+  animation: hero-shimmer 860ms var(--ease-standard) 220ms 1 both;
+  pointer-events: none;
 }
 
 .score-hero::after {
@@ -3364,6 +3428,15 @@ body {
   width: 220px;
   height: 220px;
   border: 32px solid color-mix(in srgb, var(--score-accent) 7%, transparent);
+  transition:
+    opacity 280ms ease,
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.score-hero.is-compact::after {
+  opacity: 0.2;
+  transform: scale(0.72);
 }
 
 @keyframes hero-shimmer {
@@ -3379,6 +3452,15 @@ body {
 }
 
 .score-dial {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: var(--score-dial-size);
+  height: var(--score-dial-size);
+  flex: 0 0 var(--score-dial-size);
+  place-items: center;
+  overflow: visible;
+  border-radius: 50%;
   background: conic-gradient(
     var(--score-accent) var(--score-rate),
     var(--score-track) 0
@@ -3386,17 +3468,78 @@ body {
   box-shadow:
     0 12px 28px color-mix(in srgb, var(--score-accent) 15%, transparent),
     inset 0 0 0 1px var(--score-border);
-  animation: dial-pop 680ms cubic-bezier(0.34, 1.56, 0.64, 1), dial-float 4.5s ease-in-out 800ms infinite;
+  animation: dial-pop 560ms cubic-bezier(0.34, 1.56, 0.64, 1) 1 both;
+  transition:
+    --score-accent 500ms ease,
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 280ms ease;
 }
 
 .score-dial > div {
+  display: flex;
+  width: calc(var(--score-dial-size) - var(--score-dial-gap));
+  height: calc(var(--score-dial-size) - var(--score-dial-gap));
+  align-items: baseline;
+  justify-content: center;
+  padding: 0;
   background: var(--score-surface-raised);
   color: var(--score-foreground);
   box-shadow: inset 0 0 0 1px var(--score-border);
+  transition:
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 500ms ease;
+}
+
+.score-dial strong {
+  align-self: center;
+  font-size: 30px;
+  transition: font-size 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.score-dial span {
+  align-self: center;
+}
+
+.score-hero.is-compact .score-dial {
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--score-accent) 13%, transparent),
+    inset 0 0 0 1px var(--score-border);
+}
+
+.score-hero.is-compact .score-dial strong {
+  font-size: 11px;
+}
+
+.score-hero.is-compact .score-dial span {
+  display: none;
+}
+
+.score-ring-dot {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px;
+  border: 2px solid var(--score-surface-raised);
+  border-radius: 50%;
+  background: var(--score-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--score-accent) 76%, transparent);
+  transform: rotate(calc(var(--score-rate) - 90deg)) translateX(var(--score-dot-radius));
+  animation: score-ring-dot 620ms ease-out 1 both;
+  pointer-events: none;
+}
+
+.score-ring-dot.is-decrease {
+  opacity: 0.62;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--score-accent) 42%, transparent);
 }
 
 .score-dial span,
-.score-hero-copy > span,
+.score-full-label,
 .score-hero-copy p,
 .score-hero-copy h2 small {
   color: var(--score-muted);
@@ -3405,6 +3548,7 @@ body {
 .hero-score-number,
 .score-hero-copy p strong {
   color: var(--score-accent);
+  transition: color 500ms ease;
 }
 
 @keyframes dial-pop {
@@ -3414,9 +3558,160 @@ body {
   }
 }
 
-@keyframes dial-float {
-  50% {
-    transform: translateY(-4px) rotate(1deg);
+@keyframes score-ring-dot {
+  0% {
+    opacity: 0;
+    filter: blur(2px);
+  }
+
+  24%,
+  72% {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.score-hero-copy {
+  min-width: 0;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.score-full-label {
+  display: block;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.score-total-line {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.score-total-line h2 {
+  min-width: 0;
+  margin: 1px 0 3px;
+  white-space: nowrap;
+  transition:
+    font-size 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hero-score-number {
+  min-width: 1ch;
+  font-variant-numeric: tabular-nums;
+  animation: none;
+}
+
+.hero-score-number.score-number-bump {
+  animation: total-score-bump 520ms cubic-bezier(0.22, 1, 0.36, 1) 1 both;
+}
+
+.score-compact-prefix {
+  display: none;
+  flex: 0 0 auto;
+  color: var(--score-muted);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+}
+
+.score-comparison {
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.score-stage-copy {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--score-muted);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.score-stage-copy i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--score-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--score-accent) 10%, transparent);
+  transition: background-color 500ms ease;
+}
+
+.score-floating-delta {
+  position: relative;
+  z-index: 5;
+  align-self: flex-start;
+  margin-top: -5px;
+  margin-left: -2px;
+  color: var(--score-accent);
+  font-size: 13px;
+  font-weight: 800;
+  animation: score-delta-float 720ms ease-out 1 both;
+  pointer-events: none;
+}
+
+.score-floating-delta.is-decrease {
+  color: var(--score-muted);
+  opacity: 0.72;
+}
+
+.score-change-glow {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at 32% 50%,
+    color-mix(in srgb, var(--score-accent) 16%, transparent),
+    transparent 48%
+  );
+  animation: score-change-glow 620ms ease-out 1 both;
+  pointer-events: none;
+}
+
+@keyframes total-score-bump {
+  42% {
+    transform: translateY(-4px) scale(1.035);
+  }
+}
+
+@keyframes score-delta-float {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+
+  24%,
+  64% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96);
+  }
+}
+
+@keyframes score-change-glow {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  42% {
+    opacity: 1;
   }
 }
 
@@ -3425,44 +3720,59 @@ body {
   background: color-mix(in srgb, var(--score-surface-raised) 91%, var(--score-accent));
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-raised) 70%, transparent);
   color: var(--score-accent);
+  transition:
+    opacity 140ms ease,
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 500ms ease,
+    background-color 500ms ease;
 }
 
 .completion-count span {
   color: var(--score-muted);
 }
 
+.score-compact-metrics {
+  position: relative;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-compact-metrics strong {
+  color: var(--score-accent);
+  font-size: 17px;
+  transition: color 500ms ease;
+}
+
+.score-compact-metrics span {
+  padding-left: 10px;
+  border-left: 1px solid var(--score-border);
+  color: var(--score-muted);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+}
+
 .score-hero.progress-stage-30 {
   --score-accent: var(--score-stage-30);
+  --score-accent-secondary: var(--score-stage-30);
 }
 
 .score-hero.progress-stage-60 {
   --score-accent: var(--score-stage-60);
+  --score-accent-secondary: var(--score-stage-60);
 }
 
 .score-hero.progress-stage-90 {
   --score-accent: var(--score-stage-90);
+  --score-accent-secondary: var(--score-stage-90);
 }
 
 .score-hero.progress-stage-100 {
   --score-accent: var(--score-stage-100);
-}
-
-.score-hero,
-.score-hero.progress-stage-30,
-.score-hero.progress-stage-60,
-.score-hero.progress-stage-90,
-.score-hero.progress-stage-100 {
-  background:
-    radial-gradient(
-      circle at 86% 16%,
-      color-mix(in srgb, var(--score-accent) 12%, transparent),
-      transparent 34%
-    ),
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--score-surface) 92%, var(--score-accent)),
-      var(--score-surface-raised)
-    );
+  --score-accent-secondary: var(--score-stage-90);
 }
 
 .milestone-feedback {
@@ -3470,6 +3780,70 @@ body {
   background: color-mix(in srgb, var(--score-surface-raised) 88%, var(--score-accent));
   box-shadow: 0 8px 22px color-mix(in srgb, var(--score-accent) 10%, transparent);
   color: var(--score-foreground);
+}
+
+.score-hero.is-compact .score-full-label,
+.score-hero.is-compact .score-comparison,
+.score-hero.is-compact .score-stage-copy {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.score-hero.is-compact .score-hero-copy {
+  transform: translateX(-1px);
+}
+
+.score-hero.is-compact .score-total-line {
+  align-items: baseline;
+  gap: 7px;
+}
+
+.score-hero.is-compact .score-compact-prefix {
+  display: inline;
+}
+
+.score-hero.is-compact .score-total-line h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+}
+
+.score-hero.is-compact .score-total-line h2 small {
+  font-size: 13px;
+}
+
+.score-hero.is-compact .score-max-label {
+  display: none;
+}
+
+.score-hero.is-compact .score-floating-delta {
+  position: absolute;
+  top: -8px;
+  right: 0;
+  margin: 0;
+  font-size: 11px;
+}
+
+.score-hero.is-compact .completion-count {
+  position: absolute;
+  right: 16px;
+  opacity: 0;
+  transform: scale(0.88);
+  visibility: hidden;
+}
+
+.score-hero.is-compact .score-compact-metrics {
+  display: flex;
+}
+
+.score-hero.is-compact .milestone-feedback {
+  right: 10px;
+  bottom: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
 }
 
 .section-heading > span,
@@ -3984,10 +4358,11 @@ body {
     transform: translateY(-3px);
   }
 
-  .score-hero {
-    min-height: 194px;
-    padding-right: 32px;
-    padding-left: 32px;
+  .score-hero:not(.is-compact) {
+    height: 200px;
+    min-height: 200px;
+    padding-right: 28px;
+    padding-left: 28px;
   }
 }
 
@@ -4002,9 +4377,42 @@ body {
 }
 
 @media (max-width: 430px) {
-  .score-hero {
-    min-height: 164px;
-    border-radius: 27px;
+  .score-hero:not(.is-compact) {
+    --score-dial-size: 88px;
+    --score-dial-gap: 20px;
+    --score-dot-radius: 39px;
+    height: 184px;
+    min-height: 184px;
+    grid-template-columns: var(--score-dial-size) minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  .score-hero:not(.is-compact) .score-dial strong {
+    font-size: 25px;
+  }
+
+  .score-hero:not(.is-compact) .completion-count {
+    min-width: 54px;
+    padding: 8px 7px;
+  }
+
+  .score-hero:not(.is-compact) .completion-count strong {
+    font-size: 20px;
+  }
+
+  .score-hero.is-compact {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .score-hero.is-compact .score-compact-metrics {
+    gap: 7px;
+  }
+
+  .score-hero.is-compact .score-compact-metrics span {
+    padding-left: 7px;
   }
 
   .page-header h1 {
@@ -4024,5 +4432,24 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .score-hero {
+    transition:
+      --score-accent 180ms ease,
+      --score-accent-secondary 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease !important;
+  }
+
+  .score-change-glow,
+  .score-floating-delta,
+  .score-ring-dot {
+    display: none !important;
+  }
+
+  .hero-score-number.score-number-bump {
+    animation: none !important;
+    transform: none !important;
   }
 }
