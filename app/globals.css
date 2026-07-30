@@ -4983,3 +4983,74 @@ body {
     transform: none !important;
   }
 }
+
+/* Keep management controls in separate grid cells. */
+.group-management-list .project-list .management-habit-row {
+  grid-template-columns: 5px 20px 42px minmax(0, 1fr) minmax(104px, 0.7fr) 52px;
+  grid-template-areas:
+    "rail drag icon copy group switch"
+    "rail drag icon order actions actions"
+    "rail menu menu menu menu menu";
+  min-height: 128px;
+  gap: 7px 9px;
+  padding: 11px 10px 11px 8px;
+}
+
+.group-management-list .management-habit-row .project-color-rail {
+  grid-area: rail;
+}
+
+.group-management-list .management-habit-row .management-drag-handle {
+  grid-area: drag;
+}
+
+.group-management-list .management-habit-row .project-icon {
+  grid-area: icon;
+}
+
+.group-management-list .management-habit-row .project-copy {
+  grid-area: copy;
+  padding-right: 0;
+}
+
+.group-management-list .management-habit-row .management-group-select {
+  grid-area: group;
+}
+
+.group-management-list .management-habit-row .project-order {
+  grid-area: order;
+}
+
+.group-management-list .management-habit-row .project-actions {
+  grid-area: actions;
+  align-self: center;
+  justify-self: end;
+}
+
+.group-management-list .management-habit-row .switch-control {
+  position: relative;
+  top: auto;
+  right: auto;
+  grid-area: switch;
+  justify-self: end;
+}
+
+.group-management-list .management-habit-row .project-menu {
+  grid-area: menu;
+}
+
+@media (max-width: 620px) {
+  .group-management-list .project-list .management-habit-row {
+    grid-template-columns: 5px 20px 40px minmax(0, 1fr) 52px;
+    grid-template-areas:
+      "rail drag icon copy switch"
+      "rail . group group group"
+      "rail . order actions actions"
+      "rail menu menu menu menu";
+    min-height: 172px;
+  }
+
+  .group-management-list .management-habit-row .project-actions {
+    grid-column: auto;
+  }
+}
