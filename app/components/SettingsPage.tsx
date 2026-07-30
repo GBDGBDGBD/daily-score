@@ -7,6 +7,14 @@ import {
   MAX_BACKUP_BYTES,
   validateBackup,
 } from "@/app/lib/backup";
+import {
+  clearHabitColorOverrides,
+  getHabitColor,
+  getSuggestedHabitColor,
+  HABIT_COLORS,
+  setHabitColor,
+} from "@/app/lib/habitColors";
+import { clearMilestoneHistory } from "@/app/lib/milestones";
 import { formatBytes } from "@/app/lib/storage";
 import type {
   AppBackup,
@@ -42,6 +50,7 @@ interface HabitDraft {
   maxScore: number;
   weight: number;
   enabled: boolean;
+  color: string;
 }
 
 const EMPTY_HABIT: HabitDraft = {
@@ -51,6 +60,7 @@ const EMPTY_HABIT: HabitDraft = {
   maxScore: 10,
   weight: 1,
   enabled: true,
+  color: HABIT_COLORS[0],
 };
 
 function formatBackupDate(timestamp?: number): string {
@@ -74,6 +84,7 @@ export function SettingsPage({
   const [confirmClear, setConfirmClear] = useState(false);
   const [backupConfirm, setBackupConfirm] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<AppBackup>();
+  const [openProjectMenu, setOpenProjectMenu] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -154,8 +165,32 @@ export function SettingsPage({
     if (!editingHabit) return;
     setBusy(true);
     try {
-      await saveHabit(editingHabit);
+      const { color, ...habitDraft } = editingHabit;
+      const savedHabit = await saveHabit(habitDraft);
+      setHabitColor(savedHabit.id, color);
       setEditingHabit(undefined);
+      await onReload();
+    } catch (error) {
+      setNotice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function duplicateHabit(habit: Habit) {
+    setBusy(true);
+    try {
+      const duplicate = await saveHabit({
+        name: `${habit.name} 副本`,
+        description: habit.description ?? "",
+        icon: habit.icon ?? "✓",
+        maxScore: habit.maxScore,
+        weight: habit.weight,
+        enabled: habit.enabled,
+      });
+      setHabitColor(duplicate.id, getHabitColor(habit));
+      setOpenProjectMenu(undefined);
+      setNotice(`已复制“${habit.name}”。`);
       await onReload();
     } catch (error) {
       setNotice((error as Error).message);
@@ -171,7 +206,7 @@ export function SettingsPage({
           <p className="eyebrow">你的节奏，你来定义</p>
           <h1>设置</h1>
         </div>
-        <span className="version-badge">v1.0</span>
+        <span className="version-badge">v1.1</span>
       </header>
 
       {notice ? (
@@ -192,14 +227,33 @@ export function SettingsPage({
           <button
             className="button button-small button-primary"
             type="button"
-            onClick={() => setEditingHabit({ ...EMPTY_HABIT })}
+            onClick={() =>
+              setEditingHabit({
+                ...EMPTY_HABIT,
+                color: getSuggestedHabitColor(
+                  habits.filter((habit) => !habit.archived).length,
+                ),
+              })
+            }
           >
             ＋ 新增
           </button>
         </div>
         <div className="project-list">
           {habits.filter((habit) => !habit.archived).map((habit, index, activeHabits) => (
-            <article key={habit.id} className={!habit.enabled ? "disabled" : ""}>
+            <article
+              key={habit.id}
+              className={[
+                !habit.enabled ? "disabled" : "",
+                openProjectMenu === habit.id ? "menu-open" : "",
+              ].join(" ")}
+              style={
+                {
+                  "--habit-color": getHabitColor(habit),
+                } as React.CSSProperties
+              }
+            >
+              <span className="project-color-rail" aria-hidden="true" />
               <div className="project-icon">{habit.icon || "✓"}</div>
               <div className="project-copy">
                 <strong>{habit.name}</strong>
@@ -208,10 +262,14 @@ export function SettingsPage({
                   {settings.scoringMode === "weighted" ? ` · 权重 ${habit.weight}` : ""}
                 </span>
               </div>
-              <div className="project-actions">
+              <span className={`project-status ${habit.enabled ? "active" : ""}`}>
+                {habit.enabled ? "使用中" : "已停用"}
+              </span>
+              <div className="project-order">
                 <button
                   type="button"
                   aria-label={`${habit.name}上移`}
+                  title="上移"
                   disabled={index === 0}
                   onClick={async () => {
                     await moveHabit(habit.id, -1);
@@ -223,6 +281,7 @@ export function SettingsPage({
                 <button
                   type="button"
                   aria-label={`${habit.name}下移`}
+                  title="下移"
                   disabled={index === activeHabits.length - 1}
                   onClick={async () => {
                     await moveHabit(habit.id, 1);
@@ -231,7 +290,10 @@ export function SettingsPage({
                 >
                   ↓
                 </button>
+              </div>
+              <div className="project-actions">
                 <button
+                  className="project-edit-button"
                   type="button"
                   aria-label={`编辑${habit.name}`}
                   onClick={() =>
@@ -243,10 +305,25 @@ export function SettingsPage({
                       maxScore: habit.maxScore,
                       weight: habit.weight,
                       enabled: habit.enabled,
+                      color: getHabitColor(habit),
                     })
                   }
                 >
+                  <span aria-hidden="true">✎</span>
                   编辑
+                </button>
+                <button
+                  className="project-more-button"
+                  type="button"
+                  aria-label={`${habit.name}更多操作`}
+                  aria-expanded={openProjectMenu === habit.id}
+                  onClick={() =>
+                    setOpenProjectMenu(
+                      openProjectMenu === habit.id ? undefined : habit.id,
+                    )
+                  }
+                >
+                  •••
                 </button>
               </div>
               <label className="switch-control">
@@ -261,13 +338,43 @@ export function SettingsPage({
                 />
                 <span />
               </label>
-              <button
-                className="archive-link"
-                type="button"
-                onClick={() => setConfirmArchive(habit)}
-              >
-                归档
-              </button>
+              {openProjectMenu === habit.id ? (
+                <div className="project-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={busy}
+                    onClick={() => void duplicateHabit(habit)}
+                  >
+                    <span aria-hidden="true">＋</span>
+                    复制项目
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={async () => {
+                      await saveHabit({ ...habit, enabled: !habit.enabled });
+                      setOpenProjectMenu(undefined);
+                      await onReload();
+                    }}
+                  >
+                    <span aria-hidden="true">{habit.enabled ? "Ⅱ" : "▶"}</span>
+                    {habit.enabled ? "停用项目" : "启用项目"}
+                  </button>
+                  <button
+                    className="archive-menu-button"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenProjectMenu(undefined);
+                      setConfirmArchive(habit);
+                    }}
+                  >
+                    <span aria-hidden="true">⌁</span>
+                    归档项目
+                  </button>
+                </div>
+              ) : null}
             </article>
           ))}
         </div>
@@ -494,6 +601,26 @@ export function SettingsPage({
                 />
               </label>
             </div>
+            <fieldset className="color-picker">
+              <legend>项目颜色</legend>
+              <div>
+                {HABIT_COLORS.map((color, index) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={editingHabit.color === color ? "active" : ""}
+                    style={{ "--swatch-color": color } as React.CSSProperties}
+                    aria-label={`选择第 ${index + 1} 种项目颜色`}
+                    aria-pressed={editingHabit.color === color}
+                    onClick={() =>
+                      setEditingHabit({ ...editingHabit, color })
+                    }
+                  >
+                    {editingHabit.color === color ? "✓" : ""}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           </div>
         ) : null}
       </Modal>
@@ -548,6 +675,8 @@ export function SettingsPage({
         onPrimary={async () => {
           setBusy(true);
           await clearAllData();
+          clearHabitColorOverrides();
+          clearMilestoneHistory();
           setConfirmClear(false);
           setBusy(false);
           setNotice("数据已清空，并重新创建了默认项目。");

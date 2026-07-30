@@ -23,7 +23,10 @@ export function BottomNav({ active, onChange }: BottomNavProps) {
           type="button"
           className={active === item.id ? "active" : ""}
           aria-current={active === item.id ? "page" : undefined}
-          onClick={() => onChange(item.id)}
+          onClick={() => {
+            onChange(item.id);
+            window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+          }}
         >
           <span className="nav-icon" aria-hidden="true">
             {item.icon}

@@ -6,6 +6,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -13,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatShortDate, getDateRange, getLocalDateKey } from "@/app/lib/date";
+import { getHabitColor } from "@/app/lib/habitColors";
 import {
   averageRate,
   calculateHabitAverages,
@@ -46,6 +48,10 @@ export function StatisticsPage({
     () => calculateHabitAverages(habits, scores),
     [habits, scores],
   );
+  const habitById = useMemo(
+    () => new Map(habits.map((habit) => [habit.id, habit])),
+    [habits],
+  );
   const todayRecord = records.find((record) => record.dateKey === today);
   const completedRecords = records.filter((record) => record.status !== "empty");
   const highest = completedRecords.length
@@ -58,6 +64,9 @@ export function StatisticsPage({
   const barData = habitAverages.slice(0, 8).map((habit) => ({
     name: habit.name.length > 5 ? `${habit.name.slice(0, 5)}…` : habit.name,
     rate: habit.averageRate,
+    color: habitById.has(habit.habitId)
+      ? getHabitColor(habitById.get(habit.habitId)!)
+      : "var(--accent)",
   }));
   const lowHabits = [...habitAverages]
     .sort((a, b) => a.averageRate - b.averageRate)
@@ -122,7 +131,11 @@ export function StatisticsPage({
         {completedRecords.length ? (
           <div className="trend-chart" aria-label={`最近 ${range} 天得分率折线图`}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 12, right: 6, left: -24, bottom: 0 }}>
+              <AreaChart
+                key={range}
+                data={chartData}
+                margin={{ top: 12, right: 6, left: -24, bottom: 0 }}
+              >
                 <defs>
                   <linearGradient id="score-fill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.34} />
@@ -164,6 +177,8 @@ export function StatisticsPage({
                   strokeWidth={3}
                   fill="url(#score-fill)"
                   activeDot={{ r: 5, fill: "var(--accent)", strokeWidth: 0 }}
+                  animationDuration={650}
+                  animationEasing="ease-out"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -238,7 +253,16 @@ export function StatisticsPage({
                   ticks={[0, 50, 100]}
                 />
                 <Tooltip formatter={(value) => [`${value}%`, "平均完成度"]} />
-                <Bar dataKey="rate" fill="var(--accent)" radius={[8, 8, 2, 2]} />
+                <Bar
+                  dataKey="rate"
+                  radius={[8, 8, 2, 2]}
+                  animationDuration={650}
+                  animationEasing="ease-out"
+                >
+                  {barData.map((habit) => (
+                    <Cell key={habit.name} fill={habit.color} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -249,7 +273,16 @@ export function StatisticsPage({
           <div className="low-list">
             <h3>值得多关照</h3>
             {lowHabits.map((habit) => (
-              <div key={habit.habitId}>
+              <div
+                key={habit.habitId}
+                style={
+                  {
+                    "--habit-color": habitById.has(habit.habitId)
+                      ? getHabitColor(habitById.get(habit.habitId)!)
+                      : "var(--accent)",
+                  } as React.CSSProperties
+                }
+              >
                 <span>{habit.icon}</span>
                 <strong>{habit.name}</strong>
                 <div><i style={{ width: `${habit.averageRate}%` }} /></div>

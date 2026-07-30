@@ -3,6 +3,8 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDatabase } from "@/app/db/database";
 import { validateBackup } from "@/app/lib/backup";
 import { getLocalDateKey } from "@/app/lib/date";
+import { getHabitColor, HABIT_COLORS } from "@/app/lib/habitColors";
+import { getCrossedMilestone } from "@/app/lib/milestones";
 import { calculateScoreSummary } from "@/app/lib/scoring";
 import { calculateStreak, getTrend } from "@/app/lib/statistics";
 import {
@@ -48,6 +50,20 @@ describe("计分与日期", () => {
       calculateScoreSummary([{ score: 11, maxScore: 10, weight: 1 }], false),
     ).toThrow("评分必须");
     expect(getLocalDateKey(new Date(2026, 6, 30, 0, 10))).toBe("2026-07-30");
+  });
+});
+
+describe("展示反馈", () => {
+  it("15 个默认项目获得稳定且不重复的颜色", () => {
+    const colors = createDefaultHabits().map((habit) => getHabitColor(habit));
+    expect(new Set(colors).size).toBe(15);
+    expect(colors).toEqual([...HABIT_COLORS]);
+  });
+
+  it("一次跨越多个进度阈值时只返回最高且不重复触发", () => {
+    expect(getCrossedMilestone(25, 65, [])).toBe(60);
+    expect(getCrossedMilestone(55, 65, [30, 60])).toBeNull();
+    expect(getCrossedMilestone(85, 100, [30, 60])).toBe(100);
   });
 });
 
