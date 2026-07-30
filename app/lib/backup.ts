@@ -1,4 +1,5 @@
 import { getBackupTimeKey, isDateKey } from "@/app/lib/date";
+import { isHabitColor } from "@/app/lib/habitColors";
 import type { AppBackup, Habit } from "@/app/lib/types";
 
 export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
@@ -43,6 +44,9 @@ export function validateBackup(value: unknown): AppBackup {
       habit.weight <= 0
     ) {
       throw new Error("备份中的项目满分或权重无效");
+    }
+    if ("color" in habit && habit.color !== undefined && !isHabitColor(habit.color)) {
+      throw new Error("备份中的项目颜色无效");
     }
     habitIds.add(habit.id);
   });

@@ -9,10 +9,8 @@ import {
 } from "@/app/lib/backup";
 import {
   clearHabitColorOverrides,
-  getHabitColor,
   getSuggestedHabitColor,
   HABIT_COLORS,
-  setHabitColor,
 } from "@/app/lib/habitColors";
 import { clearMilestoneHistory } from "@/app/lib/milestones";
 import { formatBytes } from "@/app/lib/storage";
@@ -30,6 +28,7 @@ import {
   moveHabit,
   restoreAllData,
   saveHabit,
+  updateHabitColor,
   updateSettings,
 } from "@/app/repositories/appRepository";
 import { Modal } from "@/app/components/Modal";
@@ -165,9 +164,7 @@ export function SettingsPage({
     if (!editingHabit) return;
     setBusy(true);
     try {
-      const { color, ...habitDraft } = editingHabit;
-      const savedHabit = await saveHabit(habitDraft);
-      setHabitColor(savedHabit.id, color);
+      await saveHabit(editingHabit);
       setEditingHabit(undefined);
       await onReload();
     } catch (error) {
@@ -177,18 +174,32 @@ export function SettingsPage({
     }
   }
 
+  async function chooseHabitColor(color: string) {
+    const habitId = editingHabit?.id;
+    setEditingHabit((current) => current ? { ...current, color } : current);
+    if (!habitId) return;
+    try {
+      await updateHabitColor(habitId, color);
+      await onReload();
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  }
+
   async function duplicateHabit(habit: Habit) {
     setBusy(true);
     try {
-      const duplicate = await saveHabit({
+      await saveHabit({
         name: `${habit.name} 副本`,
         description: habit.description ?? "",
         icon: habit.icon ?? "✓",
         maxScore: habit.maxScore,
         weight: habit.weight,
         enabled: habit.enabled,
+        color: getSuggestedHabitColor(
+          habits.filter((item) => !item.archived),
+        ),
       });
-      setHabitColor(duplicate.id, getHabitColor(habit));
       setOpenProjectMenu(undefined);
       setNotice(`已复制“${habit.name}”。`);
       await onReload();
@@ -231,7 +242,7 @@ export function SettingsPage({
               setEditingHabit({
                 ...EMPTY_HABIT,
                 color: getSuggestedHabitColor(
-                  habits.filter((habit) => !habit.archived).length,
+                  habits.filter((habit) => !habit.archived),
                 ),
               })
             }
@@ -249,7 +260,7 @@ export function SettingsPage({
               ].join(" ")}
               style={
                 {
-                  "--habit-color": getHabitColor(habit),
+                  "--habit-color": habit.color,
                 } as React.CSSProperties
               }
             >
@@ -305,7 +316,7 @@ export function SettingsPage({
                       maxScore: habit.maxScore,
                       weight: habit.weight,
                       enabled: habit.enabled,
-                      color: getHabitColor(habit),
+                      color: habit.color,
                     })
                   }
                 >
@@ -612,9 +623,7 @@ export function SettingsPage({
                     style={{ "--swatch-color": color } as React.CSSProperties}
                     aria-label={`选择第 ${index + 1} 种项目颜色`}
                     aria-pressed={editingHabit.color === color}
-                    onClick={() =>
-                      setEditingHabit({ ...editingHabit, color })
-                    }
+                    onClick={() => void chooseHabitColor(color)}
                   >
                     {editingHabit.color === color ? "✓" : ""}
                   </button>

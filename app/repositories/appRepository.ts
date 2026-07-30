@@ -1,4 +1,10 @@
 import { getDatabase } from "@/app/db/database";
+import {
+  getPaletteColor,
+  getSuggestedHabitColor,
+  isHabitColor,
+  resolveHabitColor,
+} from "@/app/lib/habitColors";
 import { calculateScoreSummary, getRecordStatus } from "@/app/lib/scoring";
 import type {
   AppBackup,
@@ -32,6 +38,7 @@ export function createDefaultHabits(now = Date.now()): Habit[] {
   return DEFAULT_HABITS.map((habit, index) => ({
     ...habit,
     id: `habit-${index + 1}`,
+    color: getPaletteColor(index),
     maxScore: 10,
     weight: 1,
     sortOrder: index,
@@ -215,6 +222,10 @@ export async function saveHabit(
     name: input.name.trim(),
     description: input.description?.trim() ?? "",
     icon: input.icon?.trim() || "✓",
+    color: isHabitColor(input.color)
+      ? input.color
+      : existing?.color ??
+        getSuggestedHabitColor(habits.filter((item) => !item.archived)),
     maxScore: Number(input.maxScore ?? existing?.maxScore ?? 10),
     weight: Number(input.weight ?? existing?.weight ?? 1),
     sortOrder: existing?.sortOrder ?? habits.length,
@@ -241,6 +252,18 @@ export async function archiveHabit(habitId: string): Promise<void> {
     enabled: false,
     updatedAt: Date.now(),
   });
+}
+
+export async function updateHabitColor(
+  habitId: string,
+  color: string,
+): Promise<void> {
+  if (!isHabitColor(color)) throw new Error("项目颜色无效");
+  const updated = await getDatabase().habits.update(habitId, {
+    color,
+    updatedAt: Date.now(),
+  });
+  if (!updated) throw new Error("项目不存在");
 }
 
 export async function moveHabit(
@@ -288,6 +311,10 @@ export async function exportAllData(): Promise<AppBackup> {
 
 export async function restoreAllData(backup: AppBackup): Promise<void> {
   const db = getDatabase();
+  const restoredHabits = backup.habits.map((habit) => ({
+    ...habit,
+    color: resolveHabitColor(habit),
+  }));
   await db.transaction(
     "rw",
     [db.habits, db.dailyRecords, db.habitScores, db.settings],
@@ -296,7 +323,7 @@ export async function restoreAllData(backup: AppBackup): Promise<void> {
       await db.dailyRecords.clear();
       await db.habits.clear();
       await db.settings.clear();
-      await db.habits.bulkAdd(backup.habits);
+      await db.habits.bulkAdd(restoredHabits);
       await db.dailyRecords.bulkAdd(backup.dailyRecords);
       await db.habitScores.bulkAdd(backup.habitScores);
       await db.settings.put({ ...backup.settings, updatedAt: Date.now() });

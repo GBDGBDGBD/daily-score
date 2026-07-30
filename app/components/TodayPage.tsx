@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, formatFullDate, getLocalDateKey } from "@/app/lib/date";
-import { getHabitColor } from "@/app/lib/habitColors";
 import {
   getCrossedMilestone,
   getTriggeredMilestones,
@@ -24,12 +23,10 @@ import type {
 } from "@/app/lib/types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-type ScoreFeedbackPhase = "changed" | "saved";
 
 interface ScoreFeedbackState {
   token: number;
   score: number;
-  phase: ScoreFeedbackPhase;
 }
 
 interface MilestoneFeedbackState {
@@ -73,12 +70,12 @@ function giveHapticFeedback(pattern: number | number[]): void {
   navigator.vibrate(pattern);
 }
 
-function getFeedbackCopy(score: number, maxScore: number): string {
-  if (score === maxScore) return "满分完成";
-  const rate = score / maxScore;
-  if (rate >= 0.7) return "完成得很好";
-  if (rate >= 0.4) return "稳稳推进";
-  return "已记录";
+export function getScoreFeedbackCopy(score: number): string {
+  if (score <= 0) return "你再懒点呢😠";
+  if (score <= 3) return "干了总比没干强😓";
+  if (score <= 6) return "还可以吧🙄";
+  if (score <= 9) return "不错哦😏";
+  return "太棒了 🎉";
 }
 
 function ScoreDial({
@@ -266,13 +263,12 @@ export function TodayPage({
   function setTemporaryScoreFeedback(
     habitId: string,
     score: number,
-    phase: ScoreFeedbackPhase,
   ) {
     feedbackToken.current += 1;
     const token = feedbackToken.current;
     setScoreFeedback((current) => ({
       ...current,
-      [habitId]: { token, score, phase },
+      [habitId]: { token, score },
     }));
     const existing = feedbackTimers.current.get(habitId);
     if (existing) clearTimeout(existing);
@@ -281,7 +277,7 @@ export function TodayPage({
       setTimeout(() => {
         setScoreFeedback((current) => ({ ...current, [habitId]: undefined }));
         feedbackTimers.current.delete(habitId);
-      }, phase === "saved" ? 1_100 : 850),
+      }, 1_120),
     );
   }
 
@@ -303,7 +299,6 @@ export function TodayPage({
     habitId: string,
     score: number,
     note: string,
-    showScoreFeedback = true,
   ) {
     const existing = saveTimers.current.get(habitId);
     if (existing) clearTimeout(existing);
@@ -322,9 +317,6 @@ export function TodayPage({
           );
           setRecord(nextRecord);
           finishSaving(true);
-          if (showScoreFeedback) {
-            setTemporaryScoreFeedback(habitId, score, "saved");
-          }
           await onSaved();
         } catch {
           finishSaving(false);
@@ -340,7 +332,7 @@ export function TodayPage({
   ) {
     const safeScore = Math.min(habit.maxScore, Math.max(0, score));
     setDraftScores((current) => ({ ...current, [habit.id]: safeScore }));
-    setTemporaryScoreFeedback(habit.id, safeScore, "changed");
+    setTemporaryScoreFeedback(habit.id, safeScore);
     if (source === "button" && safeScore > 0) {
       giveHapticFeedback(safeScore === habit.maxScore ? [8, 28, 12] : 8);
     }
@@ -350,7 +342,7 @@ export function TodayPage({
   function updateHabitNote(habit: Habit, note: string) {
     setDraftNotes((current) => ({ ...current, [habit.id]: note }));
     const score = draftScores[habit.id];
-    if (score !== undefined) scheduleScoreSave(habit.id, score, note, false);
+    if (score !== undefined) scheduleScoreSave(habit.id, score, note);
   }
 
   function updateDayNote(note: string) {
@@ -498,15 +490,11 @@ export function TodayPage({
               className={[
                 "habit-card",
                 score !== undefined ? "scored" : "unscored",
-                feedback
-                  ? `score-feedback feedback-${feedback.token % 2 ? "odd" : "even"}`
-                  : "",
-                feedback?.score === habit.maxScore ? "perfect-feedback" : "",
               ].join(" ")}
               key={habit.id}
               style={
                 {
-                  "--habit-color": getHabitColor(habit),
+                  "--habit-color": habit.color,
                 } as React.CSSProperties
               }
             >
@@ -534,13 +522,14 @@ export function TodayPage({
                   </div>
                 </div>
               </div>
-              {feedback?.phase === "saved" ? (
-                <span className="score-recorded" key={feedback.token}>
-                  ✓ {getFeedbackCopy(feedback.score, habit.maxScore)}
-                </span>
-              ) : null}
-              {feedback?.score === habit.maxScore ? (
-                <span className="perfect-spark" aria-hidden="true">✦</span>
+              {feedback ? (
+                <div
+                  className="score-feedback-overlay"
+                  role="status"
+                  key={feedback.token}
+                >
+                  <strong>{getScoreFeedbackCopy(feedback.score)}</strong>
+                </div>
               ) : null}
               <div className="quick-scores" aria-label={`${habit.name}快捷评分`}>
                 {quickScores.map((quickScore) => (

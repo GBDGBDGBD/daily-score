@@ -1,12 +1,14 @@
 import "fake-indexeddb/auto";
+import Dexie from "dexie";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { getDatabase } from "@/app/db/database";
+import { DailyScoreDatabase, getDatabase } from "@/app/db/database";
 import { validateBackup } from "@/app/lib/backup";
 import { getLocalDateKey } from "@/app/lib/date";
-import { getHabitColor, HABIT_COLORS } from "@/app/lib/habitColors";
+import { HABIT_COLORS } from "@/app/lib/habitColors";
 import { getCrossedMilestone } from "@/app/lib/milestones";
 import { calculateScoreSummary } from "@/app/lib/scoring";
 import { calculateStreak, getTrend } from "@/app/lib/statistics";
+import { getScoreFeedbackCopy } from "@/app/components/TodayPage";
 import {
   archiveHabit,
   createDefaultHabits,
@@ -18,6 +20,7 @@ import {
   listHabits,
   restoreAllData,
   saveHabitScore,
+  updateHabitColor,
 } from "@/app/repositories/appRepository";
 
 describe("计分与日期", () => {
@@ -55,9 +58,22 @@ describe("计分与日期", () => {
 
 describe("展示反馈", () => {
   it("15 个默认项目获得稳定且不重复的颜色", () => {
-    const colors = createDefaultHabits().map((habit) => getHabitColor(habit));
+    const colors = createDefaultHabits().map((habit) => habit.color);
     expect(new Set(colors).size).toBe(15);
     expect(colors).toEqual([...HABIT_COLORS]);
+  });
+
+  it("按分数展示对应的卡片反馈文案", () => {
+    expect([0, 1, 3, 4, 6, 7, 9, 10].map(getScoreFeedbackCopy)).toEqual([
+      "你再懒点呢😠",
+      "干了总比没干强😓",
+      "干了总比没干强😓",
+      "还可以吧🙄",
+      "还可以吧🙄",
+      "不错哦😏",
+      "不错哦😏",
+      "太棒了 🎉",
+    ]);
   });
 
   it("一次跨越多个进度阈值时只返回最高且不重复触发", () => {
@@ -118,6 +134,13 @@ describe("IndexedDB Repository", () => {
     expect(createDefaultHabits()).toHaveLength(15);
   });
 
+  it("颜色修改直接持久化到 IndexedDB", async () => {
+    await initializeApp();
+    const [habit] = await listHabits();
+    await updateHabitColor(habit.id, "#123456");
+    expect((await listHabits())[0].color).toBe("#123456");
+  });
+
   it("同一天同一项目重复保存时只保留一条记录", async () => {
     await initializeApp();
     const [habit] = await listHabits();
@@ -152,6 +175,39 @@ describe("IndexedDB Repository", () => {
   });
 });
 
+describe("IndexedDB 颜色迁移", () => {
+  it("只为缺少颜色的旧项目补齐颜色，并保留已有颜色", async () => {
+    const databaseName = `daily-score-color-migration-${crypto.randomUUID()}`;
+    const legacyDatabase = new Dexie(databaseName);
+    legacyDatabase.version(1).stores({
+      habits: "id, enabled, archived, sortOrder, createdAt",
+      dailyRecords: "id, &dateKey, updatedAt",
+      habitScores: "id, dateKey, habitId, &[dateKey+habitId], updatedAt",
+      settings: "id",
+    });
+    await legacyDatabase.open();
+    const legacyHabits = createDefaultHabits().map((habit, index) => {
+      const habitWithoutColor = { ...habit } as Partial<typeof habit>;
+      delete habitWithoutColor.color;
+      return index === 0
+        ? { ...habitWithoutColor, color: "#123456" }
+        : habitWithoutColor;
+    });
+    await legacyDatabase.table("habits").bulkAdd(legacyHabits);
+    legacyDatabase.close();
+
+    const migratedDatabase = new DailyScoreDatabase(databaseName);
+    await migratedDatabase.open();
+    const migratedHabits = await migratedDatabase.habits.orderBy("sortOrder").toArray();
+
+    expect(migratedHabits[0].color).toBe("#123456");
+    expect(migratedHabits.every((habit) => Boolean(habit.color))).toBe(true);
+    expect(new Set(migratedHabits.map((habit) => habit.color)).size).toBe(15);
+
+    await migratedDatabase.delete();
+  });
+});
+
 describe("备份校验", () => {
   it("接受合法结构并拒绝重复评分", async () => {
     await getDatabase().delete();
@@ -160,6 +216,10 @@ describe("备份校验", () => {
     const [habit] = await listHabits();
     await saveHabitScore("2026-07-30", habit.id, 5, "", "normal");
     const backup = await exportAllData();
+    expect(validateBackup(backup).format).toBe("daily-score-backup");
+    backup.habits.forEach((habit) => {
+      delete (habit as Partial<typeof habit>).color;
+    });
     expect(validateBackup(backup).format).toBe("daily-score-backup");
     backup.habitScores.push({ ...backup.habitScores[0], id: "another-id" });
     expect(() => validateBackup(backup)).toThrow("重复评分");

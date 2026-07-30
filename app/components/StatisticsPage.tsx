@@ -14,7 +14,6 @@ import {
   YAxis,
 } from "recharts";
 import { formatShortDate, getDateRange, getLocalDateKey } from "@/app/lib/date";
-import { getHabitColor } from "@/app/lib/habitColors";
 import {
   averageRate,
   calculateHabitAverages,
@@ -65,7 +64,7 @@ export function StatisticsPage({
     name: habit.name.length > 5 ? `${habit.name.slice(0, 5)}…` : habit.name,
     rate: habit.averageRate,
     color: habitById.has(habit.habitId)
-      ? getHabitColor(habitById.get(habit.habitId)!)
+      ? habitById.get(habit.habitId)!.color
       : "var(--accent)",
   }));
   const lowHabits = [...habitAverages]
@@ -278,7 +277,7 @@ export function StatisticsPage({
                 style={
                   {
                     "--habit-color": habitById.has(habit.habitId)
-                      ? getHabitColor(habitById.get(habit.habitId)!)
+                      ? habitById.get(habit.habitId)!.color
                       : "var(--accent)",
                   } as React.CSSProperties
                 }

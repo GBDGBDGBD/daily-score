@@ -7,6 +7,7 @@ export interface Habit {
   name: string;
   description?: string;
   icon?: string;
+  color: string;
   maxScore: number;
   weight: number;
   sortOrder: number;

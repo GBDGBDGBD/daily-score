@@ -20,62 +20,53 @@ export const HABIT_COLORS = [
 
 const STORAGE_KEY = "daily-score-habit-colors-v1";
 
-function readOverrides(): Record<string, string> {
+export type StoredHabitWithoutRequiredColor = Omit<Habit, "color"> & {
+  color?: string;
+};
+
+export function isHabitColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+export function getLegacyHabitColorOverrides(): Record<string, string> {
   if (typeof window === "undefined") return {};
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) return {};
     const parsed = JSON.parse(stored) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as Record<string, string>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string] =>
+        isHabitColor(entry[1]),
+      ),
+    );
   } catch {
     return {};
   }
 }
 
-function hashId(id: string): number {
-  let hash = 0;
-  for (let index = 0; index < id.length; index += 1) {
-    hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function paletteColor(index: number): string {
+export function getPaletteColor(index: number): string {
   return HABIT_COLORS[((index % HABIT_COLORS.length) + HABIT_COLORS.length) % HABIT_COLORS.length];
 }
 
-export function getHabitColor(
-  habit: Pick<Habit, "id" | "sortOrder">,
+export function resolveHabitColor(
+  habit: Pick<StoredHabitWithoutRequiredColor, "id" | "sortOrder" | "color">,
+  legacyOverrides: Record<string, string> = {},
 ): string {
-  const override = readOverrides()[habit.id];
-  if (HABIT_COLORS.some((color) => color === override)) return override;
-
-  const defaultMatch = /^habit-(\d+)$/.exec(habit.id);
-  if (defaultMatch) return paletteColor(Number(defaultMatch[1]) - 1);
-  return paletteColor(hashId(habit.id));
+  if (isHabitColor(habit.color)) return habit.color;
+  const legacyColor = legacyOverrides[habit.id];
+  if (isHabitColor(legacyColor)) return legacyColor;
+  return getPaletteColor(habit.sortOrder);
 }
 
-export function getSuggestedHabitColor(existingCount: number): string {
-  return paletteColor(existingCount);
-}
-
-export function setHabitColor(habitId: string, color: string): void {
-  if (
-    typeof window === "undefined" ||
-    !HABIT_COLORS.some((candidate) => candidate === color)
-  ) {
-    return;
-  }
-  try {
-    const overrides = readOverrides();
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ ...overrides, [habitId]: color }),
-    );
-  } catch {
-    // Color preferences are optional and safely fall back to stable ID colors.
-  }
+export function getSuggestedHabitColor(
+  habits: ReadonlyArray<Pick<Habit, "color">>,
+): string {
+  const usedColors = new Set(habits.map((habit) => habit.color.toUpperCase()));
+  return (
+    HABIT_COLORS.find((color) => !usedColors.has(color.toUpperCase())) ??
+    getPaletteColor(habits.length)
+  );
 }
 
 export function clearHabitColorOverrides(): void {
