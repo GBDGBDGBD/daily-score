@@ -12,6 +12,7 @@ import type {
   DailyRecord,
   DayBundle,
   Habit,
+  HabitGroup,
   HabitScore,
   ScoringMode,
 } from "@/app/lib/types";
@@ -56,7 +57,8 @@ function createDefaultSettings(now = Date.now()): AppSettings {
     scoringMode: "normal",
     quickScores: [0, 3, 6, 8, 10],
     initialized: true,
-    schemaVersion: 1,
+    schemaVersion: 2,
+    collapsedGroupIds: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -76,7 +78,14 @@ export async function initializeApp(): Promise<void> {
 
 export async function getSettings(): Promise<AppSettings> {
   const db = getDatabase();
-  return (await db.settings.get("app-settings")) ?? createDefaultSettings();
+  const settings = await db.settings.get("app-settings");
+  return settings
+    ? {
+        ...settings,
+        schemaVersion: Math.max(settings.schemaVersion ?? 1, 2),
+        collapsedGroupIds: settings.collapsedGroupIds ?? [],
+      }
+    : createDefaultSettings();
 }
 
 export async function updateSettings(
@@ -93,6 +102,15 @@ export async function listHabits(includeArchived = true): Promise<Habit[]> {
   const habits = await getDatabase().habits.toArray();
   return habits
     .filter((habit) => includeArchived || !habit.archived)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+export async function listHabitGroups(
+  includeArchived = true,
+): Promise<HabitGroup[]> {
+  const groups = await getDatabase().habitGroups.toArray();
+  return groups
+    .filter((group) => includeArchived || !group.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
@@ -216,6 +234,13 @@ export async function saveHabit(
   const db = getDatabase();
   const existing = input.id ? await db.habits.get(input.id) : undefined;
   const habits = await listHabits();
+  const groupId =
+    "groupId" in input
+      ? input.groupId || undefined
+      : existing?.groupId;
+  const groupSiblings = habits.filter(
+    (habit) => !habit.archived && habit.groupId === groupId,
+  );
   const now = Date.now();
   const habit: Habit = {
     id: existing?.id ?? crypto.randomUUID(),
@@ -226,6 +251,11 @@ export async function saveHabit(
       ? input.color
       : existing?.color ??
         getSuggestedHabitColor(habits.filter((item) => !item.archived)),
+    groupId,
+    sortOrderInGroup:
+      input.sortOrderInGroup ??
+      existing?.sortOrderInGroup ??
+      groupSiblings.length,
     maxScore: Number(input.maxScore ?? existing?.maxScore ?? 10),
     weight: Number(input.weight ?? existing?.weight ?? 1),
     sortOrder: existing?.sortOrder ?? habits.length,
@@ -245,6 +275,38 @@ export async function saveHabit(
   return habit;
 }
 
+export async function saveHabitGroup(
+  input: Partial<HabitGroup> & Pick<HabitGroup, "name">,
+): Promise<HabitGroup> {
+  const db = getDatabase();
+  const existing = input.id ? await db.habitGroups.get(input.id) : undefined;
+  const groups = await listHabitGroups();
+  const now = Date.now();
+  const group: HabitGroup = {
+    id: existing?.id ?? crypto.randomUUID(),
+    name: input.name.trim(),
+    icon: input.icon?.trim() || existing?.icon || "◫",
+    color: isHabitColor(input.color)
+      ? input.color
+      : existing?.color ??
+        getSuggestedHabitColor(
+          groups.map((item) => ({
+            ...item,
+            maxScore: 10,
+            weight: 1,
+            enabled: true,
+          })),
+        ),
+    sortOrder: existing?.sortOrder ?? groups.length,
+    archived: input.archived ?? existing?.archived ?? false,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  if (!group.name) throw new Error("分组名称不能为空");
+  await db.habitGroups.put(group);
+  return group;
+}
+
 export async function archiveHabit(habitId: string): Promise<void> {
   const db = getDatabase();
   await db.habits.update(habitId, {
@@ -252,6 +314,65 @@ export async function archiveHabit(habitId: string): Promise<void> {
     enabled: false,
     updatedAt: Date.now(),
   });
+}
+
+export type HabitGroupArchiveMode = "archive-habits" | "ungroup-habits";
+
+export async function archiveHabitGroup(
+  groupId: string,
+  mode: HabitGroupArchiveMode,
+): Promise<void> {
+  const db = getDatabase();
+  await db.transaction(
+    "rw",
+    [db.habitGroups, db.habits, db.settings],
+    async () => {
+      const group = await db.habitGroups.get(groupId);
+      if (!group) throw new Error("分组不存在");
+      const members = await db.habits.where("groupId").equals(groupId).toArray();
+      const now = Date.now();
+
+      if (mode === "archive-habits") {
+        await Promise.all(
+          members.map((habit) =>
+            db.habits.update(habit.id, {
+              archived: true,
+              enabled: false,
+              updatedAt: now,
+            }),
+          ),
+        );
+      } else {
+        const ungrouped = (await db.habits.toArray())
+          .filter((habit) => !habit.groupId && !habit.archived)
+          .sort(
+            (a, b) =>
+              (a.sortOrderInGroup ?? a.sortOrder) -
+              (b.sortOrderInGroup ?? b.sortOrder),
+          );
+        await Promise.all(
+          members.map((habit, index) =>
+            db.habits.update(habit.id, {
+              groupId: undefined,
+              sortOrderInGroup: ungrouped.length + index,
+              updatedAt: now,
+            }),
+          ),
+        );
+      }
+
+      await db.habitGroups.update(groupId, { archived: true, updatedAt: now });
+      const settings = await db.settings.get("app-settings");
+      if (settings?.collapsedGroupIds?.includes(groupId)) {
+        await db.settings.update("app-settings", {
+          collapsedGroupIds: settings.collapsedGroupIds.filter(
+            (id) => id !== groupId,
+          ),
+          updatedAt: now,
+        });
+      }
+    },
+  );
 }
 
 export async function updateHabitColor(
@@ -264,6 +385,136 @@ export async function updateHabitColor(
     updatedAt: Date.now(),
   });
   if (!updated) throw new Error("项目不存在");
+}
+
+function sameGroup(habit: Habit, groupId?: string): boolean {
+  return (habit.groupId || undefined) === (groupId || undefined);
+}
+
+function sortGroupHabits(habits: Habit[]): Habit[] {
+  return [...habits].sort(
+    (a, b) =>
+      (a.sortOrderInGroup ?? a.sortOrder) -
+        (b.sortOrderInGroup ?? b.sortOrder) ||
+      a.sortOrder - b.sortOrder,
+  );
+}
+
+export async function moveHabitToGroup(
+  habitId: string,
+  groupId?: string,
+  beforeHabitId?: string,
+): Promise<void> {
+  if (beforeHabitId === habitId) return;
+  const db = getDatabase();
+  await db.transaction("rw", [db.habits, db.habitGroups], async () => {
+    const moving = await db.habits.get(habitId);
+    if (!moving) throw new Error("项目不存在");
+    if (groupId) {
+      const group = await db.habitGroups.get(groupId);
+      if (!group || group.archived) throw new Error("目标分组不可用");
+    }
+
+    const allHabits = await db.habits.toArray();
+    const sourceGroupId = moving.groupId;
+    const sourceHabits = sortGroupHabits(
+      allHabits.filter(
+        (habit) =>
+          habit.id !== habitId &&
+          !habit.archived &&
+          sameGroup(habit, sourceGroupId),
+      ),
+    );
+    const targetHabits =
+      sourceGroupId === groupId
+        ? sourceHabits
+        : sortGroupHabits(
+            allHabits.filter(
+              (habit) =>
+                habit.id !== habitId &&
+                !habit.archived &&
+                sameGroup(habit, groupId),
+            ),
+          );
+    const targetIndex = beforeHabitId
+      ? targetHabits.findIndex((habit) => habit.id === beforeHabitId)
+      : -1;
+    const insertAt = targetIndex >= 0 ? targetIndex : targetHabits.length;
+    const reorderedTarget = [...targetHabits];
+    reorderedTarget.splice(insertAt, 0, { ...moving, groupId });
+    const now = Date.now();
+
+    await Promise.all(
+      reorderedTarget.map((habit, index) =>
+        db.habits.update(habit.id, {
+          groupId,
+          sortOrderInGroup: index,
+          updatedAt: now,
+        }),
+      ),
+    );
+    if (sourceGroupId !== groupId) {
+      await Promise.all(
+        sourceHabits.map((habit, index) =>
+          db.habits.update(habit.id, {
+            sortOrderInGroup: index,
+            updatedAt: now,
+          }),
+        ),
+      );
+    }
+  });
+}
+
+export async function moveHabitInGroup(
+  habitId: string,
+  direction: -1 | 1,
+): Promise<void> {
+  const db = getDatabase();
+  const habit = await db.habits.get(habitId);
+  if (!habit) return;
+  const siblings = sortGroupHabits(
+    (await db.habits.toArray()).filter(
+      (item) => !item.archived && sameGroup(item, habit.groupId),
+    ),
+  );
+  const index = siblings.findIndex((item) => item.id === habitId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= siblings.length) return;
+  const next = [...siblings];
+  [next[index], next[target]] = [next[target], next[index]];
+  const now = Date.now();
+  await db.transaction("rw", db.habits, async () => {
+    await Promise.all(
+      next.map((item, sortOrderInGroup) =>
+        db.habits.update(item.id, { sortOrderInGroup, updatedAt: now }),
+      ),
+    );
+  });
+}
+
+export async function moveHabitGroup(
+  groupId: string,
+  direction: -1 | 1,
+): Promise<void> {
+  const db = getDatabase();
+  const groups = await listHabitGroups(false);
+  const index = groups.findIndex((group) => group.id === groupId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= groups.length) return;
+  const current = groups[index];
+  const sibling = groups[target];
+  const now = Date.now();
+  await db.transaction("rw", db.habitGroups, async () => {
+    await db.habitGroups.update(current.id, {
+      sortOrder: sibling.sortOrder,
+      updatedAt: now,
+    });
+    await db.habitGroups.update(sibling.id, {
+      sortOrder: current.sortOrder,
+      updatedAt: now,
+    });
+  });
 }
 
 export async function moveHabit(
@@ -291,18 +542,21 @@ export async function moveHabit(
 
 export async function exportAllData(): Promise<AppBackup> {
   const db = getDatabase();
-  const [habits, dailyRecords, habitScores, settings] = await Promise.all([
-    db.habits.toArray(),
-    db.dailyRecords.toArray(),
-    db.habitScores.toArray(),
-    getSettings(),
-  ]);
+  const [habits, habitGroups, dailyRecords, habitScores, settings] =
+    await Promise.all([
+      db.habits.toArray(),
+      db.habitGroups.toArray(),
+      db.dailyRecords.toArray(),
+      db.habitScores.toArray(),
+      getSettings(),
+    ]);
   return {
     format: "daily-score-backup",
-    schemaVersion: 1,
+    schemaVersion: 2,
     appVersion: "1.0.0",
     exportedAt: new Date().toISOString(),
     habits,
+    habitGroups,
     dailyRecords,
     habitScores,
     settings,
@@ -315,18 +569,26 @@ export async function restoreAllData(backup: AppBackup): Promise<void> {
     ...habit,
     color: resolveHabitColor(habit),
   }));
+  const restoredGroups = backup.habitGroups ?? [];
   await db.transaction(
     "rw",
-    [db.habits, db.dailyRecords, db.habitScores, db.settings],
+    [db.habits, db.habitGroups, db.dailyRecords, db.habitScores, db.settings],
     async () => {
       await db.habitScores.clear();
       await db.dailyRecords.clear();
       await db.habits.clear();
+      await db.habitGroups.clear();
       await db.settings.clear();
       await db.habits.bulkAdd(restoredHabits);
+      await db.habitGroups.bulkAdd(restoredGroups);
       await db.dailyRecords.bulkAdd(backup.dailyRecords);
       await db.habitScores.bulkAdd(backup.habitScores);
-      await db.settings.put({ ...backup.settings, updatedAt: Date.now() });
+      await db.settings.put({
+        ...backup.settings,
+        schemaVersion: 2,
+        collapsedGroupIds: backup.settings.collapsedGroupIds ?? [],
+        updatedAt: Date.now(),
+      });
     },
   );
 }
@@ -335,12 +597,13 @@ export async function clearAllData(): Promise<void> {
   const db = getDatabase();
   await db.transaction(
     "rw",
-    [db.habits, db.dailyRecords, db.habitScores, db.settings],
+    [db.habits, db.habitGroups, db.dailyRecords, db.habitScores, db.settings],
     async () => {
       await Promise.all([
         db.habitScores.clear(),
         db.dailyRecords.clear(),
         db.habits.clear(),
+        db.habitGroups.clear(),
         db.settings.clear(),
       ]);
     },

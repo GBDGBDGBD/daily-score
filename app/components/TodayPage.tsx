@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GroupedHabitList } from "@/app/components/GroupedHabitList";
 import { addDays, formatFullDate, getLocalDateKey } from "@/app/lib/date";
+import { getIncompleteGroupIds } from "@/app/lib/grouping";
 import {
   getCrossedMilestone,
   getTriggeredMilestones,
@@ -14,11 +16,13 @@ import {
   getDayBundle,
   saveDayNote,
   saveHabitScore,
+  updateSettings,
 } from "@/app/repositories/appRepository";
 import type {
   AppSettings,
   DailyRecord,
   Habit,
+  HabitGroup,
   HabitScore,
 } from "@/app/lib/types";
 
@@ -59,6 +63,7 @@ const PROGRESS_STAGE_COPY: Record<ScoreProgressStage, string> = {
 interface TodayPageProps {
   dateKey: string;
   habits: Habit[];
+  groups: HabitGroup[];
   settings: AppSettings;
   records: DailyRecord[];
   isHistory?: boolean;
@@ -380,6 +385,7 @@ function TotalScoreCard({
 export function TodayPage({
   dateKey,
   habits,
+  groups,
   settings,
   records,
   isHistory = false,
@@ -394,6 +400,9 @@ export function TodayPage({
   const [openNote, setOpenNote] = useState<string>();
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [isScoreCompact, setIsScoreCompact] = useState(false);
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<string[]>(
+    settings.collapsedGroupIds ?? [],
+  );
   const [scoreChangeToken, setScoreChangeToken] = useState(0);
   const [scoreFeedback, setScoreFeedback] = useState<
     Record<string, ScoreFeedbackState | undefined>
@@ -415,6 +424,7 @@ export function TodayPage({
   const triggeredMilestones = useRef<ProgressMilestone[]>([]);
   const milestonesReady = useRef(false);
   const compactState = useRef(false);
+  const initializedCollapseDate = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let frame = 0;
@@ -453,6 +463,34 @@ export function TodayPage({
         (isHistory && scoreIds.has(habit.id)),
     );
   }, [draftScores, habits, isHistory]);
+
+  useEffect(() => {
+    if (loading || isHistory || initializedCollapseDate.current === dateKey) {
+      return;
+    }
+    initializedCollapseDate.current = dateKey;
+    const incompleteIds = new Set(
+      getIncompleteGroupIds(visibleHabits, groups, draftScores),
+    );
+    const nextCollapsed = (settings.collapsedGroupIds ?? []).filter(
+      (groupId) => !incompleteIds.has(groupId),
+    );
+    setCollapsedGroupIds(nextCollapsed);
+    if (
+      nextCollapsed.length !== (settings.collapsedGroupIds ?? []).length
+    ) {
+      void updateSettings({ collapsedGroupIds: nextCollapsed }).then(onSaved);
+    }
+  }, [
+    dateKey,
+    draftScores,
+    groups,
+    isHistory,
+    loading,
+    onSaved,
+    settings.collapsedGroupIds,
+    visibleHabits,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -651,6 +689,129 @@ export function TodayPage({
     }, 300);
   }
 
+  function changeCollapsedGroups(nextGroupIds: string[]) {
+    setCollapsedGroupIds(nextGroupIds);
+    void updateSettings({ collapsedGroupIds: nextGroupIds })
+      .then(onSaved)
+      .catch(() => setSaveState("error"));
+  }
+
+  function renderHabitCard(habit: Habit, index: number) {
+    const score = draftScores[habit.id];
+    const feedback = scoreFeedback[habit.id];
+    const quickScores = settings.quickScores
+      .map((value) => Math.min(value, habit.maxScore))
+      .filter(
+        (value, scoreIndex, values) => values.indexOf(value) === scoreIndex,
+      );
+    return (
+      <article
+        className={[
+          "habit-card",
+          score !== undefined ? "scored" : "unscored",
+        ].join(" ")}
+        key={habit.id}
+        style={
+          {
+            "--habit-color": habit.color,
+          } as React.CSSProperties
+        }
+      >
+        <span className="habit-color-rail" aria-hidden="true" />
+        <div className="habit-main">
+          <div className="habit-icon" aria-hidden="true">
+            {habit.icon || "✓"}
+          </div>
+          <div className="habit-copy">
+            <div className="habit-name-row">
+              <span className="habit-index">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <h3>{habit.name}</h3>
+              <output aria-label={`${habit.name}当前评分`}>
+                <span
+                  className="score-number"
+                  key={`${habit.id}-${score ?? "none"}`}
+                >
+                  {score ?? "未评分"}
+                </span>
+                {score !== undefined ? (
+                  <small> / {habit.maxScore}</small>
+                ) : null}
+              </output>
+            </div>
+            <div className="habit-meta">
+              <p>{habit.description || "为今天的实际完成度打分"}</p>
+              <span className="habit-state">
+                {score !== undefined ? "✓ 已评分" : "待评分"}
+              </span>
+            </div>
+          </div>
+        </div>
+        {feedback ? (
+          <div
+            className="score-feedback-overlay"
+            role="status"
+            key={feedback.token}
+          >
+            <strong>{getScoreFeedbackCopy(feedback.score)}</strong>
+          </div>
+        ) : null}
+        <div className="quick-scores" aria-label={`${habit.name}快捷评分`}>
+          {quickScores.map((quickScore) => (
+            <button
+              key={quickScore}
+              type="button"
+              className={score === quickScore ? "active" : ""}
+              onClick={() => updateScore(habit, quickScore, "button")}
+              aria-label={`${habit.name} ${quickScore} 分`}
+            >
+              {quickScore}
+            </button>
+          ))}
+        </div>
+        <div className="slider-row">
+          <input
+            type="range"
+            min="0"
+            max={habit.maxScore}
+            step="1"
+            value={score ?? 0}
+            aria-label={`${habit.name}评分滑块`}
+            style={
+              {
+                "--slider-rate": `${((score ?? 0) / habit.maxScore) * 100}%`,
+              } as React.CSSProperties
+            }
+            onChange={(event) =>
+              updateScore(habit, Number(event.target.value), "slider")
+            }
+          />
+          <button
+            className="note-toggle"
+            type="button"
+            aria-expanded={openNote === habit.id}
+            onClick={() =>
+              setOpenNote(openNote === habit.id ? undefined : habit.id)
+            }
+          >
+            {draftNotes[habit.id] ? "已记" : "备注"}
+          </button>
+        </div>
+        {openNote === habit.id ? (
+          <textarea
+            className="habit-note"
+            value={draftNotes[habit.id] ?? ""}
+            maxLength={200}
+            placeholder="这一项今天发生了什么？"
+            aria-label={`${habit.name}备注`}
+            onChange={(event) => updateHabitNote(habit, event.target.value)}
+          />
+        ) : null}
+      </article>
+    );
+  }
+
   if (loading) {
     return (
       <div className="page-loading" role="status">
@@ -716,112 +877,16 @@ export function TodayPage({
         <span>{settings.scoringMode === "weighted" ? "权重模式" : "普通模式"}</span>
       </div>
 
-      <div className="habit-list">
-        {visibleHabits.map((habit, index) => {
-          const score = draftScores[habit.id];
-          const feedback = scoreFeedback[habit.id];
-          const quickScores = settings.quickScores
-            .map((value) => Math.min(value, habit.maxScore))
-            .filter((value, scoreIndex, values) => values.indexOf(value) === scoreIndex);
-          return (
-            <article
-              className={[
-                "habit-card",
-                score !== undefined ? "scored" : "unscored",
-              ].join(" ")}
-              key={habit.id}
-              style={
-                {
-                  "--habit-color": habit.color,
-                } as React.CSSProperties
-              }
-            >
-              <span className="habit-color-rail" aria-hidden="true" />
-              <div className="habit-main">
-                <div className="habit-icon" aria-hidden="true">
-                  {habit.icon || "✓"}
-                </div>
-                <div className="habit-copy">
-                  <div className="habit-name-row">
-                    <span className="habit-index">{String(index + 1).padStart(2, "0")}</span>
-                    <h3>{habit.name}</h3>
-                    <output aria-label={`${habit.name}当前评分`}>
-                      <span className="score-number" key={`${habit.id}-${score ?? "none"}`}>
-                        {score ?? "未评分"}
-                      </span>
-                      {score !== undefined ? <small> / {habit.maxScore}</small> : null}
-                    </output>
-                  </div>
-                  <div className="habit-meta">
-                    <p>{habit.description || "为今天的实际完成度打分"}</p>
-                    <span className="habit-state">
-                      {score !== undefined ? "✓ 已评分" : "待评分"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {feedback ? (
-                <div
-                  className="score-feedback-overlay"
-                  role="status"
-                  key={feedback.token}
-                >
-                  <strong>{getScoreFeedbackCopy(feedback.score)}</strong>
-                </div>
-              ) : null}
-              <div className="quick-scores" aria-label={`${habit.name}快捷评分`}>
-                {quickScores.map((quickScore) => (
-                  <button
-                    key={quickScore}
-                    type="button"
-                    className={score === quickScore ? "active" : ""}
-                    onClick={() => updateScore(habit, quickScore, "button")}
-                    aria-label={`${habit.name} ${quickScore} 分`}
-                  >
-                    {quickScore}
-                  </button>
-                ))}
-              </div>
-              <div className="slider-row">
-                <input
-                  type="range"
-                  min="0"
-                  max={habit.maxScore}
-                  step="1"
-                  value={score ?? 0}
-                  aria-label={`${habit.name}评分滑块`}
-                  style={
-                    {
-                      "--slider-rate": `${((score ?? 0) / habit.maxScore) * 100}%`,
-                    } as React.CSSProperties
-                  }
-                  onChange={(event) =>
-                    updateScore(habit, Number(event.target.value), "slider")
-                  }
-                />
-                <button
-                  className="note-toggle"
-                  type="button"
-                  aria-expanded={openNote === habit.id}
-                  onClick={() => setOpenNote(openNote === habit.id ? undefined : habit.id)}
-                >
-                  {draftNotes[habit.id] ? "已记" : "备注"}
-                </button>
-              </div>
-              {openNote === habit.id ? (
-                <textarea
-                  className="habit-note"
-                  value={draftNotes[habit.id] ?? ""}
-                  maxLength={200}
-                  placeholder="这一项今天发生了什么？"
-                  aria-label={`${habit.name}备注`}
-                  onChange={(event) => updateHabitNote(habit, event.target.value)}
-                />
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
+      <GroupedHabitList
+        habits={visibleHabits}
+        groups={groups}
+        scores={draftScores}
+        weighted={settings.scoringMode === "weighted"}
+        collapsedGroupIds={collapsedGroupIds}
+        onCollapsedChange={changeCollapsedGroups}
+        renderHabit={renderHabitCard}
+        showIncompleteShortcut={!isHistory}
+      />
 
       <section className="day-note-card">
         <div>

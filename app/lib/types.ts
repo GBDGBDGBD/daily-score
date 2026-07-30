@@ -8,10 +8,23 @@ export interface Habit {
   description?: string;
   icon?: string;
   color: string;
+  groupId?: string;
+  sortOrderInGroup?: number;
   maxScore: number;
   weight: number;
   sortOrder: number;
   enabled: boolean;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface HabitGroup {
+  id: string;
+  name: string;
+  icon?: string;
+  color: string;
+  sortOrder: number;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -46,6 +59,7 @@ export interface AppSettings {
   quickScores: number[];
   initialized: boolean;
   schemaVersion: number;
+  collapsedGroupIds: string[];
   lastBackupAt?: number;
   lastBackupVersion?: number;
   createdAt: number;
@@ -58,6 +72,7 @@ export interface AppBackup {
   appVersion: string;
   exportedAt: string;
   habits: Habit[];
+  habitGroups: HabitGroup[];
   dailyRecords: DailyRecord[];
   habitScores: HabitScore[];
   settings: AppSettings;

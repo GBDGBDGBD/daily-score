@@ -8,11 +8,17 @@ import {
   getMonthGrid,
   parseDateKey,
 } from "@/app/lib/date";
-import type { AppSettings, DailyRecord, Habit } from "@/app/lib/types";
+import type {
+  AppSettings,
+  DailyRecord,
+  Habit,
+  HabitGroup,
+} from "@/app/lib/types";
 import { TodayPage } from "@/app/components/TodayPage";
 
 interface HistoryPageProps {
   habits: Habit[];
+  groups: HabitGroup[];
   records: DailyRecord[];
   settings: AppSettings;
   selectedDate: string;
@@ -22,6 +28,7 @@ interface HistoryPageProps {
 
 export function HistoryPage({
   habits,
+  groups,
   records,
   settings,
   selectedDate,
@@ -55,6 +62,7 @@ export function HistoryPage({
         <TodayPage
           dateKey={selectedDate}
           habits={habits}
+          groups={groups}
           settings={settings}
           records={records}
           isHistory

@@ -13,6 +13,7 @@ import type {
   AppSettings,
   DailyRecord,
   Habit,
+  HabitGroup,
   HabitScore,
   StorageStatus,
 } from "@/app/lib/types";
@@ -21,6 +22,7 @@ import {
   getAllScores,
   getSettings,
   initializeApp,
+  listHabitGroups,
   listHabits,
 } from "@/app/repositories/appRepository";
 import { useUIStore } from "@/app/stores/uiStore";
@@ -50,6 +52,7 @@ export function DailyScoreApp() {
     setStatisticsRange,
   } = useUIStore();
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [groups, setGroups] = useState<HabitGroup[]>([]);
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [scores, setScores] = useState<HabitScore[]>([]);
   const [settings, setSettings] = useState<AppSettings>();
@@ -64,15 +67,24 @@ export function DailyScoreApp() {
   const [updateReady, setUpdateReady] = useState<ServiceWorkerRegistration>();
 
   const reload = useCallback(async () => {
-    const [nextHabits, nextRecords, nextScores, nextSettings, nextStorage] =
+    const [
+      nextHabits,
+      nextGroups,
+      nextRecords,
+      nextScores,
+      nextSettings,
+      nextStorage,
+    ] =
       await Promise.all([
         listHabits(true),
+        listHabitGroups(true),
         getAllRecords(),
         getAllScores(),
         getSettings(),
         getStorageStatus(),
       ]);
     setHabits(nextHabits);
+    setGroups(nextGroups);
     setRecords(nextRecords);
     setScores(nextScores);
     setSettings(nextSettings);
@@ -194,6 +206,7 @@ export function DailyScoreApp() {
           <TodayPage
             dateKey={getLocalDateKey()}
             habits={habits}
+            groups={groups}
             records={records}
             settings={settings}
             showBackupReminder={showBackupReminder}
@@ -204,6 +217,7 @@ export function DailyScoreApp() {
         {activeTab === "history" ? (
           <HistoryPage
             habits={habits}
+            groups={groups}
             records={records}
             settings={settings}
             selectedDate={selectedDate}
@@ -223,6 +237,7 @@ export function DailyScoreApp() {
         {activeTab === "settings" ? (
           <SettingsPage
             habits={habits}
+            groups={groups}
             settings={settings}
             storageStatus={storageStatus}
             onReload={reload}

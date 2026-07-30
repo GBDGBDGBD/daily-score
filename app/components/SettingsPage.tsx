@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   backupToFile,
   downloadFile,
@@ -13,28 +13,36 @@ import {
   HABIT_COLORS,
 } from "@/app/lib/habitColors";
 import { clearMilestoneHistory } from "@/app/lib/milestones";
+import { groupHabits } from "@/app/lib/grouping";
 import { formatBytes } from "@/app/lib/storage";
 import type {
   AppBackup,
   AppSettings,
   Habit,
+  HabitGroup,
   StorageStatus,
   ThemeMode,
 } from "@/app/lib/types";
 import {
   archiveHabit,
+  archiveHabitGroup,
   clearAllData,
   exportAllData,
-  moveHabit,
+  moveHabitGroup,
+  moveHabitInGroup,
+  moveHabitToGroup,
   restoreAllData,
   saveHabit,
+  saveHabitGroup,
   updateHabitColor,
   updateSettings,
+  type HabitGroupArchiveMode,
 } from "@/app/repositories/appRepository";
 import { Modal } from "@/app/components/Modal";
 
 interface SettingsPageProps {
   habits: Habit[];
+  groups: HabitGroup[];
   settings: AppSettings;
   storageStatus: StorageStatus;
   onReload: () => Promise<void>;
@@ -50,6 +58,14 @@ interface HabitDraft {
   weight: number;
   enabled: boolean;
   color: string;
+  groupId?: string;
+}
+
+interface HabitGroupDraft {
+  id?: string;
+  name: string;
+  icon: string;
+  color: string;
 }
 
 const EMPTY_HABIT: HabitDraft = {
@@ -60,6 +76,12 @@ const EMPTY_HABIT: HabitDraft = {
   weight: 1,
   enabled: true,
   color: HABIT_COLORS[0],
+};
+
+const EMPTY_GROUP: HabitGroupDraft = {
+  name: "",
+  icon: "◫",
+  color: HABIT_COLORS[4],
 };
 
 function formatBackupDate(timestamp?: number): string {
@@ -74,19 +96,51 @@ function formatBackupDate(timestamp?: number): string {
 
 export function SettingsPage({
   habits,
+  groups,
   settings,
   storageStatus,
   onReload,
 }: SettingsPageProps) {
   const [editingHabit, setEditingHabit] = useState<HabitDraft>();
+  const [editingGroup, setEditingGroup] = useState<HabitGroupDraft>();
   const [confirmArchive, setConfirmArchive] = useState<Habit>();
+  const [confirmGroupArchive, setConfirmGroupArchive] = useState<{
+    group: HabitGroup;
+    mode: HabitGroupArchiveMode;
+  }>();
   const [confirmClear, setConfirmClear] = useState(false);
   const [backupConfirm, setBackupConfirm] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<AppBackup>();
   const [openProjectMenu, setOpenProjectMenu] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [dragHabitId, setDragHabitId] = useState<string>();
+  const dragHabitRef = useRef<string | undefined>(undefined);
   const fileInput = useRef<HTMLInputElement>(null);
+  const activeGroups = useMemo(
+    () => groups.filter((group) => !group.archived),
+    [groups],
+  );
+  const groupedHabits = useMemo(
+    () =>
+      groupHabits(
+        habits.filter((habit) => !habit.archived),
+        activeGroups,
+      ),
+    [activeGroups, habits],
+  );
+  const managementSections = useMemo(() => {
+    const membersByGroup = new Map(
+      groupedHabits.sections.map((section) => [
+        section.group.id,
+        section.habits,
+      ]),
+    );
+    return activeGroups.map((group) => ({
+      group,
+      habits: membersByGroup.get(group.id) ?? [],
+    }));
+  }, [activeGroups, groupedHabits.sections]);
 
   async function patchSettings(patch: Partial<AppSettings>) {
     await updateSettings(patch);
@@ -120,7 +174,7 @@ export function SettingsPage({
   async function confirmBackupSaved() {
     await updateSettings({
       lastBackupAt: Date.now(),
-      lastBackupVersion: 1,
+      lastBackupVersion: 2,
     });
     setBackupConfirm(false);
     setNotice("已记录本次 iCloud 备份时间。");
@@ -164,8 +218,36 @@ export function SettingsPage({
     if (!editingHabit) return;
     setBusy(true);
     try {
-      await saveHabit(editingHabit);
+      const existing = editingHabit.id
+        ? habits.find((habit) => habit.id === editingHabit.id)
+        : undefined;
+      const saved = await saveHabit(
+        existing
+          ? { ...editingHabit, groupId: existing.groupId }
+          : editingHabit,
+      );
+      if (
+        existing &&
+        (existing.groupId || undefined) !==
+          (editingHabit.groupId || undefined)
+      ) {
+        await moveHabitToGroup(saved.id, editingHabit.groupId);
+      }
       setEditingHabit(undefined);
+      await onReload();
+    } catch (error) {
+      setNotice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitGroup() {
+    if (!editingGroup) return;
+    setBusy(true);
+    try {
+      await saveHabitGroup(editingGroup);
+      setEditingGroup(undefined);
       await onReload();
     } catch (error) {
       setNotice((error as Error).message);
@@ -199,6 +281,7 @@ export function SettingsPage({
         color: getSuggestedHabitColor(
           habits.filter((item) => !item.archived),
         ),
+        groupId: habit.groupId,
       });
       setOpenProjectMenu(undefined);
       setNotice(`已复制“${habit.name}”。`);
@@ -210,6 +293,252 @@ export function SettingsPage({
     }
   }
 
+  function openHabitEditor(habit: Habit) {
+    setEditingHabit({
+      id: habit.id,
+      name: habit.name,
+      description: habit.description ?? "",
+      icon: habit.icon ?? "✓",
+      maxScore: habit.maxScore,
+      weight: habit.weight,
+      enabled: habit.enabled,
+      color: habit.color,
+      groupId: habit.groupId,
+    });
+  }
+
+  function toggleManagedGroup(groupId: string) {
+    const next = new Set(settings.collapsedGroupIds ?? []);
+    if (next.has(groupId)) next.delete(groupId);
+    else next.add(groupId);
+    void patchSettings({ collapsedGroupIds: [...next] });
+  }
+
+  async function dropHabit(
+    targetGroupId?: string,
+    beforeHabitId?: string,
+    movingHabitId = dragHabitRef.current ?? dragHabitId,
+  ) {
+    if (!movingHabitId) return;
+    setBusy(true);
+    try {
+      await moveHabitToGroup(movingHabitId, targetGroupId, beforeHabitId);
+      await onReload();
+    } catch (error) {
+      setNotice((error as Error).message);
+    } finally {
+      dragHabitRef.current = undefined;
+      setDragHabitId(undefined);
+      setBusy(false);
+    }
+  }
+
+  function finishPointerDrag(event: React.PointerEvent<HTMLElement>) {
+    const movingHabitId = dragHabitRef.current;
+    if (!movingHabitId || event.pointerType === "mouse") return;
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-habit-drop], [data-group-drop]");
+    const beforeHabitId = target?.dataset.habitDrop || undefined;
+    const targetGroupId = target?.dataset.groupId || undefined;
+    void dropHabit(targetGroupId, beforeHabitId, movingHabitId);
+  }
+
+  function renderManagedHabit(
+    habit: Habit,
+    index: number,
+    siblings: Habit[],
+  ) {
+    return (
+      <article
+        key={habit.id}
+        className={[
+          "management-habit-row",
+          !habit.enabled ? "disabled" : "",
+          openProjectMenu === habit.id ? "menu-open" : "",
+          dragHabitId === habit.id ? "is-dragging" : "",
+        ].join(" ")}
+        style={{ "--habit-color": habit.color } as React.CSSProperties}
+        data-habit-drop={habit.id}
+        data-group-id={habit.groupId ?? ""}
+        draggable
+        onDragStart={(event) => {
+          dragHabitRef.current = habit.id;
+          setDragHabitId(habit.id);
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", habit.id);
+        }}
+        onDragEnd={() => {
+          dragHabitRef.current = undefined;
+          setDragHabitId(undefined);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void dropHabit(habit.groupId, habit.id);
+        }}
+      >
+        <span className="project-color-rail" aria-hidden="true" />
+        <span
+          className="management-drag-handle"
+          aria-label={`拖动${habit.name}`}
+          role="button"
+          tabIndex={0}
+          onPointerDown={(event) => {
+            if (event.pointerType === "mouse") return;
+            dragHabitRef.current = habit.id;
+            setDragHabitId(habit.id);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerUp={finishPointerDrag}
+          onPointerCancel={() => {
+            dragHabitRef.current = undefined;
+            setDragHabitId(undefined);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+            event.preventDefault();
+            void moveHabitInGroup(
+              habit.id,
+              event.key === "ArrowUp" ? -1 : 1,
+            ).then(onReload);
+          }}
+        >
+          ⠿
+        </span>
+        <div className="project-icon">{habit.icon || "✓"}</div>
+        <div className="project-copy">
+          <strong>{habit.name}</strong>
+          <span>
+            满分 {habit.maxScore}
+            {settings.scoringMode === "weighted"
+              ? ` · 权重 ${habit.weight}`
+              : ""}
+          </span>
+        </div>
+        <label className="management-group-select">
+          <span className="visually-hidden">移动{habit.name}到分组</span>
+          <select
+            value={habit.groupId ?? ""}
+            aria-label={`移动${habit.name}到分组`}
+            onChange={async (event) => {
+              await moveHabitToGroup(
+                habit.id,
+                event.target.value || undefined,
+              );
+              await onReload();
+            }}
+          >
+            <option value="">未分组</option>
+            {activeGroups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="project-order">
+          <button
+            type="button"
+            aria-label={`${habit.name}上移`}
+            disabled={index === 0}
+            onClick={async () => {
+              await moveHabitInGroup(habit.id, -1);
+              await onReload();
+            }}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            aria-label={`${habit.name}下移`}
+            disabled={index === siblings.length - 1}
+            onClick={async () => {
+              await moveHabitInGroup(habit.id, 1);
+              await onReload();
+            }}
+          >
+            ↓
+          </button>
+        </div>
+        <div className="project-actions">
+          <button
+            className="project-edit-button"
+            type="button"
+            aria-label={`编辑${habit.name}`}
+            onClick={() => openHabitEditor(habit)}
+          >
+            <span aria-hidden="true">✎</span>
+            编辑
+          </button>
+          <button
+            className="project-more-button"
+            type="button"
+            aria-label={`${habit.name}更多操作`}
+            aria-expanded={openProjectMenu === habit.id}
+            onClick={() =>
+              setOpenProjectMenu(
+                openProjectMenu === habit.id ? undefined : habit.id,
+              )
+            }
+          >
+            •••
+          </button>
+        </div>
+        <label className="switch-control">
+          <input
+            type="checkbox"
+            checked={habit.enabled}
+            aria-label={`启用${habit.name}`}
+            onChange={async () => {
+              await saveHabit({ ...habit, enabled: !habit.enabled });
+              await onReload();
+            }}
+          />
+          <span />
+        </label>
+        {openProjectMenu === habit.id ? (
+          <div className="project-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => void duplicateHabit(habit)}
+            >
+              <span aria-hidden="true">＋</span>
+              复制项目
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={async () => {
+                await saveHabit({ ...habit, enabled: !habit.enabled });
+                setOpenProjectMenu(undefined);
+                await onReload();
+              }}
+            >
+              <span aria-hidden="true">{habit.enabled ? "Ⅱ" : "▶"}</span>
+              {habit.enabled ? "停用项目" : "启用项目"}
+            </button>
+            <button
+              className="archive-menu-button"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpenProjectMenu(undefined);
+                setConfirmArchive(habit);
+              }}
+            >
+              <span aria-hidden="true">⌁</span>
+              归档项目
+            </button>
+          </div>
+        ) : null}
+      </article>
+    );
+  }
+
   return (
     <div className="page-stack settings-page">
       <header className="page-header">
@@ -217,7 +546,7 @@ export function SettingsPage({
           <p className="eyebrow">你的节奏，你来定义</p>
           <h1>设置</h1>
         </div>
-        <span className="version-badge">v1.1</span>
+        <span className="version-badge">v1.2</span>
       </header>
 
       {notice ? (
@@ -233,161 +562,172 @@ export function SettingsPage({
         <div className="section-heading">
           <div>
             <p className="eyebrow">每日事项</p>
-            <h2>项目管理</h2>
+            <h2>分组与项目</h2>
           </div>
-          <button
-            className="button button-small button-primary"
-            type="button"
-            onClick={() =>
-              setEditingHabit({
-                ...EMPTY_HABIT,
-                color: getSuggestedHabitColor(
-                  habits.filter((habit) => !habit.archived),
-                ),
-              })
-            }
-          >
-            ＋ 新增
-          </button>
-        </div>
-        <div className="project-list">
-          {habits.filter((habit) => !habit.archived).map((habit, index, activeHabits) => (
-            <article
-              key={habit.id}
-              className={[
-                !habit.enabled ? "disabled" : "",
-                openProjectMenu === habit.id ? "menu-open" : "",
-              ].join(" ")}
-              style={
-                {
-                  "--habit-color": habit.color,
-                } as React.CSSProperties
+          <div className="management-create-actions">
+            <button
+              className="button button-small button-secondary"
+              type="button"
+              onClick={() =>
+                setEditingGroup({
+                  ...EMPTY_GROUP,
+                  color: getSuggestedHabitColor(
+                    activeGroups.map((group) => ({
+                      ...group,
+                      maxScore: 10,
+                      weight: 1,
+                      enabled: true,
+                    })),
+                  ),
+                })
               }
             >
-              <span className="project-color-rail" aria-hidden="true" />
-              <div className="project-icon">{habit.icon || "✓"}</div>
-              <div className="project-copy">
-                <strong>{habit.name}</strong>
-                <span>
-                  满分 {habit.maxScore}
-                  {settings.scoringMode === "weighted" ? ` · 权重 ${habit.weight}` : ""}
-                </span>
-              </div>
-              <span className={`project-status ${habit.enabled ? "active" : ""}`}>
-                {habit.enabled ? "使用中" : "已停用"}
-              </span>
-              <div className="project-order">
-                <button
-                  type="button"
-                  aria-label={`${habit.name}上移`}
-                  title="上移"
-                  disabled={index === 0}
-                  onClick={async () => {
-                    await moveHabit(habit.id, -1);
-                    await onReload();
-                  }}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  aria-label={`${habit.name}下移`}
-                  title="下移"
-                  disabled={index === activeHabits.length - 1}
-                  onClick={async () => {
-                    await moveHabit(habit.id, 1);
-                    await onReload();
-                  }}
-                >
-                  ↓
-                </button>
-              </div>
-              <div className="project-actions">
-                <button
-                  className="project-edit-button"
-                  type="button"
-                  aria-label={`编辑${habit.name}`}
-                  onClick={() =>
-                    setEditingHabit({
-                      id: habit.id,
-                      name: habit.name,
-                      description: habit.description ?? "",
-                      icon: habit.icon ?? "✓",
-                      maxScore: habit.maxScore,
-                      weight: habit.weight,
-                      enabled: habit.enabled,
-                      color: habit.color,
-                    })
-                  }
-                >
-                  <span aria-hidden="true">✎</span>
-                  编辑
-                </button>
-                <button
-                  className="project-more-button"
-                  type="button"
-                  aria-label={`${habit.name}更多操作`}
-                  aria-expanded={openProjectMenu === habit.id}
-                  onClick={() =>
-                    setOpenProjectMenu(
-                      openProjectMenu === habit.id ? undefined : habit.id,
-                    )
-                  }
-                >
-                  •••
-                </button>
-              </div>
-              <label className="switch-control">
-                <input
-                  type="checkbox"
-                  checked={habit.enabled}
-                  aria-label={`启用${habit.name}`}
-                  onChange={async () => {
-                    await saveHabit({ ...habit, enabled: !habit.enabled });
-                    await onReload();
-                  }}
-                />
-                <span />
-              </label>
-              {openProjectMenu === habit.id ? (
-                <div className="project-menu" role="menu">
+              ＋ 分组
+            </button>
+            <button
+              className="button button-small button-primary"
+              type="button"
+              onClick={() =>
+                setEditingHabit({
+                  ...EMPTY_HABIT,
+                  color: getSuggestedHabitColor(
+                    habits.filter((habit) => !habit.archived),
+                  ),
+                })
+              }
+            >
+              ＋ 项目
+            </button>
+          </div>
+        </div>
+        <p className="management-help">
+          拖动项目可调整顺序或跨组移动；触摸设备也可使用分组选择器和上下按钮。
+        </p>
+        <div className="group-management-list">
+          {managementSections.map(({ group, habits: members }, groupIndex) => {
+            const isCollapsed = settings.collapsedGroupIds.includes(group.id);
+            return (
+              <section
+                className={`management-group ${isCollapsed ? "is-collapsed" : ""}`}
+                key={group.id}
+                style={{ "--group-color": group.color } as React.CSSProperties}
+                data-group-drop={group.id}
+                data-group-id={group.id}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  void dropHabit(group.id);
+                }}
+              >
+                <div className="management-group-header">
                   <button
+                    className="management-group-toggle"
                     type="button"
-                    role="menuitem"
-                    disabled={busy}
-                    onClick={() => void duplicateHabit(habit)}
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleManagedGroup(group.id)}
                   >
-                    <span aria-hidden="true">＋</span>
-                    复制项目
+                    <span className="management-group-icon" aria-hidden="true">
+                      {group.icon || "◫"}
+                    </span>
+                    <span>
+                      <strong>{group.name}</strong>
+                      <small>{members.length} 个项目</small>
+                    </span>
+                    <i aria-hidden="true">⌄</i>
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={async () => {
-                      await saveHabit({ ...habit, enabled: !habit.enabled });
-                      setOpenProjectMenu(undefined);
-                      await onReload();
-                    }}
-                  >
-                    <span aria-hidden="true">{habit.enabled ? "Ⅱ" : "▶"}</span>
-                    {habit.enabled ? "停用项目" : "启用项目"}
-                  </button>
-                  <button
-                    className="archive-menu-button"
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setOpenProjectMenu(undefined);
-                      setConfirmArchive(habit);
-                    }}
-                  >
-                    <span aria-hidden="true">⌁</span>
-                    归档项目
-                  </button>
+                  <div className="management-group-actions">
+                    <button
+                      type="button"
+                      aria-label={`${group.name}上移`}
+                      disabled={groupIndex === 0}
+                      onClick={async () => {
+                        await moveHabitGroup(group.id, -1);
+                        await onReload();
+                      }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${group.name}下移`}
+                      disabled={groupIndex === managementSections.length - 1}
+                      onClick={async () => {
+                        await moveHabitGroup(group.id, 1);
+                        await onReload();
+                      }}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingGroup({
+                          id: group.id,
+                          name: group.name,
+                          icon: group.icon ?? "◫",
+                          color: group.color,
+                        })
+                      }
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`归档${group.name}`}
+                      onClick={() =>
+                        setConfirmGroupArchive({
+                          group,
+                          mode: "ungroup-habits",
+                        })
+                      }
+                    >
+                      •••
+                    </button>
+                  </div>
                 </div>
+                <div className="management-group-content" aria-hidden={isCollapsed}>
+                  <div className="management-group-content-inner">
+                    <div className="project-list">
+                      {members.map((habit, index) =>
+                        renderManagedHabit(habit, index, members),
+                      )}
+                      {!members.length ? (
+                        <p className="empty-group-dropzone">
+                          拖动项目到这里加入“{group.name}”
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+          <section
+            className="management-group ungrouped-management"
+            data-group-drop="ungrouped"
+            data-group-id=""
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              void dropHabit();
+            }}
+          >
+            <div className="ungrouped-management-header">
+              <span aria-hidden="true">•</span>
+              <div>
+                <strong>未分组</strong>
+                <small>{groupedHabits.ungrouped.length} 个项目</small>
+              </div>
+            </div>
+            <div className="project-list">
+              {groupedHabits.ungrouped.map((habit, index) =>
+                renderManagedHabit(habit, index, groupedHabits.ungrouped),
+              )}
+              {!groupedHabits.ungrouped.length ? (
+                <p className="empty-group-dropzone">拖动项目到这里即可移出分组</p>
               ) : null}
-            </article>
-          ))}
+            </div>
+          </section>
         </div>
       </section>
 
@@ -568,6 +908,25 @@ export function SettingsPage({
                 }
               />
             </label>
+            <label>
+              <span>所属分组</span>
+              <select
+                value={editingHabit.groupId ?? ""}
+                onChange={(event) =>
+                  setEditingHabit({
+                    ...editingHabit,
+                    groupId: event.target.value || undefined,
+                  })
+                }
+              >
+                <option value="">未分组</option>
+                {activeGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.icon || "◫"} {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="form-grid">
               <label>
                 <span>图标</span>
@@ -648,6 +1007,134 @@ export function SettingsPage({
         }}
         onClose={() => setConfirmArchive(undefined)}
       />
+
+      <Modal
+        open={Boolean(editingGroup)}
+        title={editingGroup?.id ? "编辑分组" : "新建分组"}
+        description="分组只负责整理项目，不会改变任何评分或历史记录。"
+        primaryLabel={busy ? "保存中…" : "保存分组"}
+        onPrimary={() => void submitGroup()}
+        onClose={() => setEditingGroup(undefined)}
+      >
+        {editingGroup ? (
+          <div className="habit-form">
+            <label>
+              <span>分组名称</span>
+              <input
+                type="text"
+                value={editingGroup.name}
+                maxLength={24}
+                autoFocus
+                onChange={(event) =>
+                  setEditingGroup({
+                    ...editingGroup,
+                    name: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>图标</span>
+              <input
+                type="text"
+                value={editingGroup.icon}
+                maxLength={4}
+                onChange={(event) =>
+                  setEditingGroup({
+                    ...editingGroup,
+                    icon: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <fieldset className="color-picker">
+              <legend>分组颜色</legend>
+              <div>
+                {HABIT_COLORS.map((color, index) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={editingGroup.color === color ? "active" : ""}
+                    style={{ "--swatch-color": color } as React.CSSProperties}
+                    aria-label={`选择第 ${index + 1} 种分组颜色`}
+                    aria-pressed={editingGroup.color === color}
+                    onClick={() =>
+                      setEditingGroup({ ...editingGroup, color })
+                    }
+                  >
+                    {editingGroup.color === color ? "✓" : ""}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(confirmGroupArchive)}
+        title={`归档“${confirmGroupArchive?.group.name ?? ""}”？`}
+        description="历史评分永远不会被删除。请选择组内项目的处理方式。"
+        primaryLabel={busy ? "处理中…" : "确认归档"}
+        primaryDanger
+        onPrimary={async () => {
+          if (!confirmGroupArchive) return;
+          setBusy(true);
+          try {
+            await archiveHabitGroup(
+              confirmGroupArchive.group.id,
+              confirmGroupArchive.mode,
+            );
+            setConfirmGroupArchive(undefined);
+            setNotice("分组已安全归档，历史评分保持不变。");
+            await onReload();
+          } catch (error) {
+            setNotice((error as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onClose={() => setConfirmGroupArchive(undefined)}
+      >
+        {confirmGroupArchive ? (
+          <div className="group-archive-options">
+            <label>
+              <input
+                type="radio"
+                name="group-archive-mode"
+                checked={confirmGroupArchive.mode === "archive-habits"}
+                onChange={() =>
+                  setConfirmGroupArchive({
+                    ...confirmGroupArchive,
+                    mode: "archive-habits",
+                  })
+                }
+              />
+              <span>
+                <strong>同时归档组内项目</strong>
+                <small>项目从今日页面隐藏，历史评分继续保留</small>
+              </span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="group-archive-mode"
+                checked={confirmGroupArchive.mode === "ungroup-habits"}
+                onChange={() =>
+                  setConfirmGroupArchive({
+                    ...confirmGroupArchive,
+                    mode: "ungroup-habits",
+                  })
+                }
+              />
+              <span>
+                <strong>保留项目并移动到“未分组”</strong>
+                <small>项目继续正常评分，只移除分组关系</small>
+              </span>
+            </label>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={backupConfirm}

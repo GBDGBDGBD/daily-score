@@ -1,6 +1,11 @@
 import { getBackupTimeKey, isDateKey } from "@/app/lib/date";
 import { isHabitColor } from "@/app/lib/habitColors";
-import type { AppBackup, Habit } from "@/app/lib/types";
+import type {
+  AppBackup,
+  AppSettings,
+  Habit,
+  HabitGroup,
+} from "@/app/lib/types";
 
 export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 
@@ -13,7 +18,7 @@ export function validateBackup(value: unknown): AppBackup {
   if (value.format !== "daily-score-backup") {
     throw new Error("这不是“每日评分”备份文件");
   }
-  if (typeof value.schemaVersion !== "number" || value.schemaVersion > 1) {
+  if (typeof value.schemaVersion !== "number" || value.schemaVersion > 2) {
     throw new Error("备份版本较新，请先升级应用");
   }
   if (
@@ -24,6 +29,27 @@ export function validateBackup(value: unknown): AppBackup {
   ) {
     throw new Error("备份文件缺少必要数据");
   }
+
+  const rawGroups = value.habitGroups ?? [];
+  if (!Array.isArray(rawGroups)) {
+    throw new Error("备份中的分组数据无效");
+  }
+  const habitGroups = rawGroups as HabitGroup[];
+  const groupIds = new Set<string>();
+  habitGroups.forEach((group) => {
+    if (
+      !isObject(group) ||
+      typeof group.id !== "string" ||
+      !group.id ||
+      typeof group.name !== "string" ||
+      !group.name.trim() ||
+      groupIds.has(group.id) ||
+      !isHabitColor(group.color)
+    ) {
+      throw new Error("备份中的分组数据无效或重复");
+    }
+    groupIds.add(group.id);
+  });
 
   const habits = value.habits as Habit[];
   const habitIds = new Set<string>();
@@ -47,6 +73,12 @@ export function validateBackup(value: unknown): AppBackup {
     }
     if ("color" in habit && habit.color !== undefined && !isHabitColor(habit.color)) {
       throw new Error("备份中的项目颜色无效");
+    }
+    if (
+      habit.groupId !== undefined &&
+      (typeof habit.groupId !== "string" || !groupIds.has(habit.groupId))
+    ) {
+      throw new Error("备份中的项目引用了不存在的分组");
     }
     habitIds.add(habit.id);
   });
@@ -78,7 +110,25 @@ export function validateBackup(value: unknown): AppBackup {
     }
   });
 
-  return value as unknown as AppBackup;
+  const rawSettings = value.settings as unknown as AppSettings;
+  if (
+    rawSettings.collapsedGroupIds !== undefined &&
+    (!Array.isArray(rawSettings.collapsedGroupIds) ||
+      rawSettings.collapsedGroupIds.some(
+        (id) => typeof id !== "string" || !groupIds.has(id),
+      ))
+  ) {
+    throw new Error("备份中的分组折叠偏好无效");
+  }
+
+  return {
+    ...(value as unknown as AppBackup),
+    habitGroups,
+    settings: {
+      ...rawSettings,
+      collapsedGroupIds: rawSettings.collapsedGroupIds ?? [],
+    },
+  };
 }
 
 export function backupToFile(
