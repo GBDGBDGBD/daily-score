@@ -112,6 +112,7 @@ export function SettingsPage({
   const [backupConfirm, setBackupConfirm] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<AppBackup>();
   const [openProjectMenu, setOpenProjectMenu] = useState<string>();
+  const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [dragHabitId, setDragHabitId] = useState<string>();
@@ -464,15 +465,6 @@ export function SettingsPage({
         </div>
         <div className="project-actions">
           <button
-            className="project-edit-button"
-            type="button"
-            aria-label={`编辑${habit.name}`}
-            onClick={() => openHabitEditor(habit)}
-          >
-            <span aria-hidden="true">✎</span>
-            编辑
-          </button>
-          <button
             className="project-more-button"
             type="button"
             aria-label={`${habit.name}更多操作`}
@@ -500,6 +492,17 @@ export function SettingsPage({
         </label>
         {openProjectMenu === habit.id ? (
           <div className="project-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpenProjectMenu(undefined);
+                openHabitEditor(habit);
+              }}
+            >
+              <span aria-hidden="true">✎</span>
+              编辑项目
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -703,7 +706,9 @@ export function SettingsPage({
             );
           })}
           <section
-            className="management-group ungrouped-management"
+            className={`management-group ungrouped-management ${
+              ungroupedCollapsed ? "is-collapsed" : ""
+            }`}
             data-group-drop="ungrouped"
             data-group-id=""
             onDragOver={(event) => event.preventDefault()}
@@ -712,20 +717,37 @@ export function SettingsPage({
               void dropHabit();
             }}
           >
-            <div className="ungrouped-management-header">
-              <span aria-hidden="true">•</span>
-              <div>
+            <button
+              className="ungrouped-management-header"
+              type="button"
+              aria-expanded={!ungroupedCollapsed}
+              onClick={() => setUngroupedCollapsed((collapsed) => !collapsed)}
+            >
+              <span className="ungrouped-management-dot" aria-hidden="true">
+                •
+              </span>
+              <span className="ungrouped-management-copy">
                 <strong>未分组</strong>
                 <small>{groupedHabits.ungrouped.length} 个项目</small>
+              </span>
+              <i aria-hidden="true">⌄</i>
+            </button>
+            <div
+              className="management-group-content"
+              aria-hidden={ungroupedCollapsed}
+            >
+              <div className="management-group-content-inner">
+                <div className="project-list">
+                  {groupedHabits.ungrouped.map((habit, index) =>
+                    renderManagedHabit(habit, index, groupedHabits.ungrouped),
+                  )}
+                  {!groupedHabits.ungrouped.length ? (
+                    <p className="empty-group-dropzone">
+                      拖动项目到这里即可移出分组
+                    </p>
+                  ) : null}
+                </div>
               </div>
-            </div>
-            <div className="project-list">
-              {groupedHabits.ungrouped.map((habit, index) =>
-                renderManagedHabit(habit, index, groupedHabits.ungrouped),
-              )}
-              {!groupedHabits.ungrouped.length ? (
-                <p className="empty-group-dropzone">拖动项目到这里即可移出分组</p>
-              ) : null}
             </div>
           </section>
         </div>

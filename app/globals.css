@@ -84,7 +84,6 @@ html {
 body {
   min-height: 100dvh;
   margin: 0;
-  overflow-x: hidden;
   background:
     radial-gradient(circle at 82% -8%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 28rem),
     var(--background);
@@ -4984,24 +4983,74 @@ body {
   }
 }
 
-/* Keep management controls in separate grid cells. */
+/* Settings project manager: one bounded grid, shared by every group. */
+html,
+body,
+.app-shell,
+.app-content,
+.settings-page,
+.settings-page .settings-section,
+.group-management-list,
+.management-group,
+.management-group-content,
+.management-group-content-inner,
+.group-management-list .project-list,
 .group-management-list .project-list .management-habit-row {
-  grid-template-columns: 5px 20px 42px minmax(0, 1fr) minmax(104px, 0.7fr) 52px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.app-content {
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+}
+
+.group-management-list {
+  overflow: visible;
+}
+
+.group-management-list .project-list {
+  gap: 12px;
+  margin-top: 0;
+}
+
+.group-management-list .project-list .management-habit-row {
+  grid-template-columns: 5px 20px 42px minmax(0, 1fr) minmax(112px, 0.72fr) 52px;
   grid-template-areas:
     "rail drag icon copy group switch"
-    "rail drag icon order actions actions"
+    "rail drag icon actions order order";
+  grid-auto-flow: row;
+  min-height: 116px;
+  gap: 10px 8px;
+  padding: 14px;
+  overflow: visible;
+  transform: none;
+}
+
+.group-management-list .project-list .management-habit-row.menu-open {
+  grid-template-areas:
+    "rail drag icon copy group switch"
+    "rail drag icon actions order order"
     "rail menu menu menu menu menu";
-  min-height: 128px;
-  gap: 7px 9px;
-  padding: 11px 10px 11px 8px;
 }
 
 .group-management-list .management-habit-row .project-color-rail {
+  width: 5px;
+  max-width: 5px;
+  min-width: 0;
+  align-self: stretch;
   grid-area: rail;
 }
 
 .group-management-list .management-habit-row .management-drag-handle {
+  width: 20px;
+  max-width: 20px;
+  min-width: 0;
+  align-self: center;
+  justify-self: center;
   grid-area: drag;
+  transform: none;
 }
 
 .group-management-list .management-habit-row .project-icon {
@@ -5009,48 +5058,226 @@ body {
 }
 
 .group-management-list .management-habit-row .project-copy {
+  min-width: 0;
+  overflow: hidden;
   grid-area: copy;
   padding-right: 0;
 }
 
+.group-management-list .management-habit-row .project-copy strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .group-management-list .management-habit-row .management-group-select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   grid-area: group;
 }
 
+.group-management-list .management-habit-row .management-group-select select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .group-management-list .management-habit-row .project-order {
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: end;
   grid-area: order;
 }
 
 .group-management-list .management-habit-row .project-actions {
-  grid-area: actions;
+  width: 44px;
+  max-width: 44px;
+  min-width: 44px;
   align-self: center;
-  justify-self: end;
+  justify-self: start;
+  grid-area: actions;
+}
+
+.group-management-list .management-habit-row .project-more-button,
+.group-management-list .management-habit-row .project-order button {
+  width: 44px;
+  max-width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
 }
 
 .group-management-list .management-habit-row .switch-control {
   position: relative;
   top: auto;
   right: auto;
+  width: 52px;
+  max-width: 52px;
+  min-width: 52px;
   grid-area: switch;
   justify-self: end;
 }
 
 .group-management-list .management-habit-row .project-menu {
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   grid-area: menu;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  transform: none;
+}
+
+.group-management-list .management-habit-row.is-dragging {
+  opacity: 0.5;
+  transform: none;
+}
+
+.ungrouped-management-header {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  border-radius: 14px;
+  color: var(--foreground);
+  text-align: left;
+  background: transparent;
+}
+
+.ungrouped-management-dot {
+  color: var(--accent);
+  font-size: 25px;
+}
+
+.ungrouped-management-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  color: var(--foreground);
+  font-size: inherit;
+}
+
+.ungrouped-management-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ungrouped-management-header i {
+  color: var(--accent);
+  font-size: 21px;
+  font-style: normal;
+  transform: rotate(180deg);
+  transition: transform 260ms ease;
+}
+
+.ungrouped-management.is-collapsed .ungrouped-management-header i {
+  transform: rotate(0deg);
 }
 
 @media (max-width: 620px) {
-  .group-management-list .project-list .management-habit-row {
-    grid-template-columns: 5px 20px 40px minmax(0, 1fr) 52px;
+  .app-content {
+    padding-right: 16px;
+    padding-bottom: calc(110px + env(safe-area-inset-bottom));
+    padding-left: 16px;
+  }
+
+  .settings-page .settings-section {
+    padding: 16px 14px;
+  }
+
+  .management-group,
+  .ungrouped-management {
+    padding: 6px;
+  }
+
+  .management-group-header {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px;
+  }
+
+  .management-group-toggle {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .management-group-actions {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .management-group-content-inner {
+    padding: 0 6px 6px;
+  }
+
+  .ungrouped-management-header {
+    display: grid;
+    min-height: 54px;
+    gap: 8px;
+    padding: 4px 8px;
+  }
+
+  .group-management-list .project-list .management-habit-row,
+  .group-management-list .project-list .management-habit-row.menu-open {
+    grid-template-columns: 5px 20px 40px minmax(0, 1fr) 48px;
     grid-template-areas:
       "rail drag icon copy switch"
-      "rail . group group group"
-      "rail . order actions actions"
+      "rail group group group group"
+      "rail actions actions order order";
+    min-height: 180px;
+    gap: 10px 6px;
+    padding: 14px 12px;
+  }
+
+  .group-management-list .project-list .management-habit-row.menu-open {
+    grid-template-areas:
+      "rail drag icon copy switch"
+      "rail group group group group"
+      "rail actions actions order order"
       "rail menu menu menu menu";
-    min-height: 172px;
+  }
+
+  .group-management-list .management-habit-row .project-icon {
+    width: 40px;
+    max-width: 40px;
+    height: 40px;
+  }
+
+  .group-management-list .management-habit-row .project-copy strong {
+    font-size: 15px;
+  }
+
+  .group-management-list .management-habit-row .project-copy span {
+    font-size: 12px;
+  }
+
+  .group-management-list .management-habit-row .switch-control {
+    width: 48px;
+    max-width: 48px;
+    min-width: 48px;
   }
 
   .group-management-list .management-habit-row .project-actions {
     grid-column: auto;
+  }
+
+  .group-management-list .management-habit-row .project-menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .group-management-list .management-habit-row .project-menu button {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-direction: row;
+  }
+
+  .bottom-navigation {
+    width: auto;
+    max-width: min(540px, calc(100% - 24px));
   }
 }
