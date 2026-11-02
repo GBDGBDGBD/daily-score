@@ -193,8 +193,8 @@ export function DailyScoreApp() {
       <div className="desktop-brand" aria-hidden="true">
         <div className="install-mark">日</div>
         <div>
-          <strong>每日评分</strong>
-          <span>把每一天变得可见</span>
+          <strong>阶段反省评分表</strong>
+          <span>7 个方向 · 看见每一步成长</span>
         </div>
       </div>
       <main className="app-content">

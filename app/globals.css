@@ -5281,3 +5281,51 @@ body,
     max-width: min(540px, calc(100% - 24px));
   }
 }
+
+/* Four deliberate choices, with the criterion visible before scoring. */
+.rubric-scores {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.rubric-scores button {
+  height: auto;
+  min-height: 80px;
+  padding: 12px 5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 7px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--foreground);
+  white-space: normal;
+  line-height: 1.4;
+}
+.rubric-scores button strong { font-size: 22px; line-height: 1.2; }
+.rubric-scores button strong small { font-size: 10px; font-weight: 500; }
+.rubric-scores button span { font-size: 11px; overflow-wrap: anywhere; font-weight: 500; }
+.rubric-scores .score-level-0 { --level-color: #7a7480; }
+.rubric-scores .score-level-3 { --level-color: #a47732; }
+.rubric-scores .score-level-6 { --level-color: #4378c5; }
+.rubric-scores .score-level-10 { --level-color: #348578; }
+.rubric-scores button.active {
+  border-color: var(--level-color);
+  background: color-mix(in srgb, var(--level-color) 15%, var(--surface));
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--level-color), 0 4px 12px color-mix(in srgb, var(--level-color) 12%, transparent);
+}
+.rubric-scores button.active strong { color: var(--level-color); }
+.rubric-scores button:hover { border-color: var(--level-color); }
+.rubric-scores button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.rubric-note { flex: 1; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.today-page .page-header .eyebrow { letter-spacing: .04em; color: var(--accent-strong); }
+.habit-group-header { border-left: 4px solid var(--group-color); }
+.habit-group-icon { background: color-mix(in srgb, var(--group-color) 12%, var(--surface)); }
+@media (max-width: 380px) {
+  .rubric-scores { gap: 5px; }
+  .rubric-scores button { padding-inline: 3px; }
+  .rubric-scores button span { font-size: 10px; }
+}

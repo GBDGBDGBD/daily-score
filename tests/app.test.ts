@@ -4,7 +4,6 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { DailyScoreDatabase, getDatabase } from "@/app/db/database";
 import { validateBackup } from "@/app/lib/backup";
 import { getLocalDateKey } from "@/app/lib/date";
-import { HABIT_COLORS } from "@/app/lib/habitColors";
 import {
   calculateHabitGroupSummary,
   groupHabits,
@@ -123,10 +122,10 @@ describe("项目分组汇总", () => {
 });
 
 describe("展示反馈", () => {
-  it("15 个默认项目获得稳定且不重复的颜色", () => {
+  it("22 个项目按七个方向使用稳定的分组色", () => {
     const colors = createDefaultHabits().map((habit) => habit.color);
-    expect(new Set(colors).size).toBe(15);
-    expect(colors).toEqual([...HABIT_COLORS]);
+    expect(new Set(colors).size).toBe(7);
+    expect(colors).toEqual(createDefaultHabits().map(habit => habit.color));
   });
 
   it("按分数展示对应的卡片反馈文案", () => {
@@ -207,9 +206,9 @@ describe("IndexedDB Repository", () => {
   it("默认项目初始化幂等", async () => {
     await initializeApp();
     await initializeApp();
-    expect(await listHabits()).toHaveLength(15);
+    expect(await listHabits()).toHaveLength(22);
     expect((await getSettings()).initialized).toBe(true);
-    expect(createDefaultHabits()).toHaveLength(15);
+    expect(createDefaultHabits()).toHaveLength(22);
   });
 
   it("颜色修改直接持久化到 IndexedDB", async () => {
@@ -223,10 +222,10 @@ describe("IndexedDB Repository", () => {
     await initializeApp();
     const [habit] = await listHabits();
     await saveHabitScore("2026-07-30", habit.id, 6, "", "normal");
-    await saveHabitScore("2026-07-30", habit.id, 8, "完成不错", "normal");
+    await saveHabitScore("2026-07-30", habit.id, 10, "完成不错", "normal");
     const scores = await getAllScores();
     expect(scores).toHaveLength(1);
-    expect(scores[0]).toMatchObject({ score: 8, note: "完成不错" });
+    expect(scores[0]).toMatchObject({ score: 10, note: "完成不错" });
     expect((await getAllRecords())[0].status).toBe("partial");
   });
 
@@ -272,7 +271,7 @@ describe("IndexedDB Repository", () => {
     });
     const [habit] = await listHabits();
     await moveHabitToGroup(habit.id, group.id);
-    await saveHabitScore("2026-07-30", habit.id, 9, "", "normal");
+    await saveHabitScore("2026-07-30", habit.id, 10, "", "normal");
     await archiveHabitGroup(group.id, "ungroup-habits");
 
     expect((await listHabitGroups()).find((item) => item.id === group.id)?.archived)
@@ -290,7 +289,7 @@ describe("IndexedDB Repository", () => {
     });
     const [habit] = await listHabits();
     await moveHabitToGroup(habit.id, group.id);
-    await saveHabitScore("2026-07-29", habit.id, 7, "", "normal");
+    await saveHabitScore("2026-07-29", habit.id, 6, "", "normal");
     await archiveHabitGroup(group.id, "archive-habits");
 
     const archivedHabit = (await listHabits()).find(
@@ -307,7 +306,7 @@ describe("IndexedDB Repository", () => {
   it("恢复事务失败时保留原数据", async () => {
     await initializeApp();
     const [habit] = await listHabits();
-    await saveHabitScore("2026-07-30", habit.id, 7, "", "normal");
+    await saveHabitScore("2026-07-30", habit.id, 6, "", "normal");
     const backup = await exportAllData();
     backup.habitScores.push({
       ...backup.habitScores[0],
@@ -329,7 +328,7 @@ describe("IndexedDB 颜色迁移", () => {
       settings: "id",
     });
     await legacyDatabase.open();
-    const legacyHabits = createDefaultHabits().map((habit, index) => {
+    const legacyHabits = createDefaultHabits().slice(0, 15).map((habit, index) => {
       const habitWithoutColor = { ...habit } as Partial<typeof habit>;
       delete habitWithoutColor.color;
       return index === 0
@@ -362,7 +361,7 @@ describe("IndexedDB 分组迁移", () => {
       settings: "id",
     });
     await legacyDatabase.open();
-    const [legacyHabit] = createDefaultHabits();
+    const legacyHabit = { ...createDefaultHabits()[0], groupId: undefined, sortOrderInGroup: undefined, scoreLabels: undefined };
     await legacyDatabase.table("habits").add(legacyHabit);
     await legacyDatabase.table("habitScores").add({
       id: `2026-07-29:${legacyHabit.id}`,
@@ -409,7 +408,7 @@ describe("备份校验", () => {
     await getDatabase().open();
     await initializeApp();
     const [habit] = await listHabits();
-    await saveHabitScore("2026-07-30", habit.id, 5, "", "normal");
+    await saveHabitScore("2026-07-30", habit.id, 3, "", "normal");
     const backup = await exportAllData();
     expect(validateBackup(backup).format).toBe("daily-score-backup");
     backup.habits.forEach((habit) => {
@@ -433,11 +432,11 @@ describe("备份校验", () => {
     const backup = await exportAllData();
 
     expect(backup.schemaVersion).toBe(2);
-    expect(backup.habitGroups).toHaveLength(1);
-    expect(validateBackup(backup).habitGroups[0].name).toBe("英语学习");
+    expect(backup.habitGroups).toHaveLength(8);
+    expect(validateBackup(backup).habitGroups.find(item => item.id === group.id)?.name).toBe("英语学习");
     await archiveHabitGroup(group.id, "ungroup-habits");
     await restoreAllData(backup);
-    expect((await listHabitGroups(false))[0].name).toBe("英语学习");
+    expect((await listHabitGroups(false)).find(item => item.id === group.id)?.name).toBe("英语学习");
     expect((await listHabits()).find((item) => item.id === habit.id)?.groupId)
       .toBe(group.id);
 

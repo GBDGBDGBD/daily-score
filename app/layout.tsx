@@ -6,21 +6,21 @@ const siteUrl =
   process.env.CF_PAGES_URL ??
   "https://daily-score.pages.dev";
 const description =
-  "一款数据只存于 iPhone 本机、支持离线使用和 iCloud Drive 备份的每日评分打卡应用。";
+  "一款数据只存于 iPhone 本机、支持离线使用和 iCloud Drive 备份的阶段反省评分表打卡应用。";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "每日评分",
-    template: "%s · 每日评分",
+    default: "阶段反省评分表",
+    template: "%s · 阶段反省评分表",
   },
   description,
-  applicationName: "每日评分",
+  applicationName: "阶段反省评分表",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "每日评分",
+    title: "阶段反省评分表",
   },
   formatDetection: {
     telephone: false,
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
   },
   openGraph: {
-    title: "每日评分",
+    title: "阶段反省评分表",
     description: "把每一天，变得可见。本机保存、离线可用、支持 iCloud 备份。",
     type: "website",
     locale: "zh_CN",
@@ -42,13 +42,13 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1672,
         height: 941,
-        alt: "每日评分——把每一天，变得可见",
+        alt: "阶段反省评分表——把每一天，变得可见",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "每日评分",
+    title: "阶段反省评分表",
     description: "把每一天，变得可见。",
     images: ["/og.png"],
   },

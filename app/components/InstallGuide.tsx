@@ -10,7 +10,7 @@ export function InstallGuide({ onPreview }: InstallGuideProps) {
       <div className="install-mark" aria-hidden="true">
         日
       </div>
-      <p className="eyebrow">每日评分 · iPhone</p>
+      <p className="eyebrow">阶段反省评分表 · iPhone</p>
       <h1>先添加到主屏幕，再开始正式打卡</h1>
       <p className="install-lead">
         主屏幕版本拥有独立的本地数据空间。这样能让你的记录离线可用，也避免在

@@ -799,7 +799,7 @@ export function SettingsPage({
         <label className="setting-row quick-score-setting">
           <div>
             <strong>快捷分数</strong>
-            <span>用英文逗号分隔，范围 0～10</span>
+            <span>仅用于自定义项目；阶段表固定 0 / 3 / 6 / 10</span>
           </div>
           <input
             type="text"

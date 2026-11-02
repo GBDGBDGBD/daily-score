@@ -10,6 +10,7 @@ export interface Habit {
   color: string;
   groupId?: string;
   sortOrderInGroup?: number;
+  scoreLabels?: string[];
   maxScore: number;
   weight: number;
   sortOrder: number;
@@ -34,6 +35,7 @@ export interface DailyRecord {
   id: string;
   dateKey: string;
   note?: string;
+  habitIds?: string[];
   totalScore: number;
   maxTotalScore: number;
   scoreRate: number;
@@ -58,6 +60,7 @@ export interface AppSettings {
   scoringMode: ScoringMode;
   quickScores: number[];
   initialized: boolean;
+  reflectionVersion?: number;
   schemaVersion: number;
   collapsedGroupIds: string[];
   lastBackupAt?: number;

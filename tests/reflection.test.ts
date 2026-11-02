@@ -1,0 +1,48 @@
+import "fake-indexeddb/auto";
+import { beforeEach, afterAll, expect, it } from "vitest";
+import { getDatabase } from "@/app/db/database";
+import { createReflectionHabits, createReflectionGroups, habitsForDay } from "@/app/lib/reflection";
+import { initializeApp, listHabits, listHabitGroups, getSettings, saveHabitScore, exportAllData, restoreAllData } from "@/app/repositories/appRepository";
+import { validateBackup } from "@/app/lib/backup";
+const db = getDatabase();
+beforeEach(async () => { await db.delete(); await db.open(); });
+afterAll(async () => { await db.delete(); });
+it("installs 22 tasks in seven groups, validates four levels and retains rubric through edits/backups", async () => {
+  await initializeApp();
+  expect(await listHabitGroups(false)).toHaveLength(7);
+  const habits = await listHabits(false);
+  expect(habits).toHaveLength(22);
+  expect(habits.reduce((sum, h) => sum + h.maxScore, 0)).toBe(220);
+  expect((await getSettings()).quickScores).toEqual([0, 3, 6, 10]);
+  await expect(saveHabitScore("2026-11-02", habits[0].id, 8, "", "normal")).rejects.toThrow();
+  await expect(saveHabitScore("2026-11-02", habits[0].id, NaN, "", "normal")).rejects.toThrow();
+  for (const score of [0, 3, 6, 10]) await saveHabitScore("2026-11-02", habits[0].id, score, "test", "normal");
+  const backup = validateBackup(await exportAllData());
+  await restoreAllData(backup);
+  expect((await listHabits(false))[0].scoreLabels).toEqual(["0关", "2关", "4关", "5关"]);
+});
+it("migrates once without losing historical checklist, total, score, or note", async () => {
+  const old = { ...createReflectionHabits(1)[0], id: "legacy", groupId: "old-group", name: "旧项目", scoreLabels: undefined };
+  const oldGroup = { ...createReflectionGroups(1)[0], id: "old-group" };
+  await db.habits.put(old);
+  await db.habitGroups.put(oldGroup);
+  await db.settings.put({ ...(await getSettings()), reflectionVersion: undefined });
+  await saveHabitScore("2026-07-30", old.id, 8, "旧备注", "normal");
+  // Simulate records written before checklist snapshots existed.
+  await db.dailyRecords.update("2026-07-30", { habitIds: undefined });
+  await initializeApp();
+  await initializeApp();
+  expect(await listHabits(false)).toHaveLength(22);
+  expect(await listHabits()).toHaveLength(23);
+  const record = await db.dailyRecords.get("2026-07-30");
+  expect(record).toMatchObject({ totalScore: 8, maxTotalScore: 10, habitIds: ["legacy"] });
+  expect(habitsForDay(await listHabits(), record).map(h => h.id)).toEqual(["legacy"]);
+  const edited = await saveHabitScore("2026-07-30", old.id, 6, "补录", "normal");
+  expect(edited.maxTotalScore).toBe(10);
+  expect(edited.totalScore).toBe(6);
+  const next = await saveHabitScore("2026-11-02", (await listHabits(false))[0].id, 10, "", "normal");
+  expect(next.maxTotalScore).toBe(220);
+  const backup = validateBackup(await exportAllData());
+  await restoreAllData(backup);
+  expect((await db.habitScores.get("2026-07-30:legacy"))?.note).toBe("补录");
+});

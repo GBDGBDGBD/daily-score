@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SCORE_LEVELS, habitsForDay } from "@/app/lib/reflection";
 import { GroupedHabitList } from "@/app/components/GroupedHabitList";
 import { addDays, formatFullDate, getLocalDateKey } from "@/app/lib/date";
 import { getIncompleteGroupIds } from "@/app/lib/grouping";
@@ -456,13 +457,8 @@ export function TodayPage({
   }, [dateKey]);
 
   const visibleHabits = useMemo(() => {
-    const scoreIds = new Set(Object.keys(draftScores));
-    return habits.filter(
-      (habit) =>
-        (!habit.archived && habit.enabled) ||
-        (isHistory && scoreIds.has(habit.id)),
-    );
-  }, [draftScores, habits, isHistory]);
+    return habitsForDay(habits, record, Object.keys(draftScores));
+  }, [draftScores, habits, record]);
 
   useEffect(() => {
     if (loading || isHistory || initializedCollapseDate.current === dateKey) {
@@ -543,9 +539,7 @@ export function TodayPage({
     [draftScores, settings.scoringMode, visibleHabits],
   );
 
-  const scoredCount = Object.values(draftScores).filter(
-    (score) => score !== undefined,
-  ).length;
+  const scoredCount = visibleHabits.filter(habit => draftScores[habit.id] !== undefined).length;
   const yesterday = records.find((item) => item.dateKey === addDays(dateKey, -1));
   const delta = summary.scoreRate - (yesterday?.scoreRate ?? 0);
 
@@ -699,7 +693,7 @@ export function TodayPage({
   function renderHabitCard(habit: Habit, index: number) {
     const score = draftScores[habit.id];
     const feedback = scoreFeedback[habit.id];
-    const quickScores = settings.quickScores
+    const quickScores = (habit.scoreLabels ? SCORE_LEVELS : settings.quickScores)
       .map((value) => Math.min(value, habit.maxScore))
       .filter(
         (value, scoreIndex, values) => values.indexOf(value) === scoreIndex,
@@ -757,21 +751,23 @@ export function TodayPage({
             <strong>{getScoreFeedbackCopy(feedback.score)}</strong>
           </div>
         ) : null}
-        <div className="quick-scores" aria-label={`${habit.name}快捷评分`}>
+        <div className={`quick-scores ${habit.scoreLabels ? "rubric-scores" : ""}`} aria-label={`${habit.name}快捷评分`}>
           {quickScores.map((quickScore) => (
             <button
               key={quickScore}
               type="button"
-              className={score === quickScore ? "active" : ""}
+              className={`score-level-${quickScore} ${score === quickScore ? "active" : ""}`}
+              aria-pressed={score === quickScore}
               onClick={() => updateScore(habit, quickScore, "button")}
               aria-label={`${habit.name} ${quickScore} 分`}
             >
-              {quickScore}
+              <strong>{quickScore}<small> 分</small></strong>
+              {habit.scoreLabels ? <span>{habit.scoreLabels[SCORE_LEVELS.indexOf(quickScore)]}</span> : null}
             </button>
           ))}
         </div>
         <div className="slider-row">
-          <input
+          {!habit.scoreLabels ? <input
             type="range"
             min="0"
             max={habit.maxScore}
@@ -786,7 +782,7 @@ export function TodayPage({
             onChange={(event) =>
               updateScore(habit, Number(event.target.value), "slider")
             }
-          />
+          /> : <span className="rubric-note">{habit.scoreLabels.every(label => label === "～") ? "～ 表示标准待细化，可直接自评" : "点选标准即可保存"}</span>}
           <button
             className="note-toggle"
             type="button"
@@ -825,7 +821,7 @@ export function TodayPage({
     <div className="page-stack today-page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{isHistory ? "历史补录" : "今天也在稳稳向前"}</p>
+          <p className="eyebrow">{isHistory ? "历史补录 · 保留当时评分表" : "阶段反省评分表（完整版）"}</p>
           <h1>{formatFullDate(dateKey)}</h1>
         </div>
         <div className={`save-state save-${saveState}`} aria-live="polite">
@@ -871,8 +867,8 @@ export function TodayPage({
 
       <div className="section-heading">
         <div>
-          <p className="eyebrow">逐项评分</p>
-          <h2>{record?.status === "completed" ? "今天全部完成" : "如实记录就很好"}</h2>
+          <p className="eyebrow">REFLECT · 每一天都算数</p>
+          <h2>{record?.status === "completed" ? "今天全部完成" : "如实记录，持续生长"}</h2>
         </div>
         <span>{settings.scoringMode === "weighted" ? "权重模式" : "普通模式"}</span>
       </div>

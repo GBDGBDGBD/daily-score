@@ -1,6 +1,6 @@
+import { createReflectionHabits, createReflectionGroups, REFLECTION_VERSION, SCORE_LEVELS, habitsForDay } from "@/app/lib/reflection";
 import { getDatabase } from "@/app/db/database";
 import {
-  getPaletteColor,
   getSuggestedHabitColor,
   isHabitColor,
   resolveHabitColor,
@@ -17,45 +17,15 @@ import type {
   ScoringMode,
 } from "@/app/lib/types";
 
-const DEFAULT_HABITS: Array<Pick<Habit, "name" | "description" | "icon">> = [
-  { name: "按时起床", description: "在计划时间开始新的一天", icon: "☀️" },
-  { name: "运动", description: "让身体活动起来", icon: "🏃" },
-  { name: "阅读", description: "专注阅读与输入", icon: "📖" },
-  { name: "专业学习", description: "推进专业能力", icon: "🎯" },
-  { name: "英语学习", description: "保持语言接触", icon: "💬" },
-  { name: "写代码", description: "完成有价值的代码工作", icon: "⌨️" },
-  { name: "健康饮食", description: "选择有营养的食物", icon: "🥗" },
-  { name: "控制零食", description: "减少计划外进食", icon: "🍎" },
-  { name: "喝水", description: "补充足量水分", icon: "💧" },
-  { name: "整理环境", description: "让空间保持清爽", icon: "🧹" },
-  { name: "今日复盘", description: "回顾得失与下一步", icon: "✍️" },
-  { name: "控制娱乐时间", description: "有意识地使用屏幕", icon: "⏳" },
-  { name: "与家人联系", description: "保持真诚连接", icon: "🏠" },
-  { name: "护肤", description: "完成日常护理", icon: "✨" },
-  { name: "按时睡觉", description: "在计划时间结束一天", icon: "🌙" },
-];
-
-export function createDefaultHabits(now = Date.now()): Habit[] {
-  return DEFAULT_HABITS.map((habit, index) => ({
-    ...habit,
-    id: `habit-${index + 1}`,
-    color: getPaletteColor(index),
-    maxScore: 10,
-    weight: 1,
-    sortOrder: index,
-    enabled: true,
-    archived: false,
-    createdAt: now,
-    updatedAt: now,
-  }));
-}
+export const createDefaultHabits = createReflectionHabits;
 
 function createDefaultSettings(now = Date.now()): AppSettings {
   return {
     id: "app-settings",
     theme: "system",
     scoringMode: "normal",
-    quickScores: [0, 3, 6, 8, 10],
+    quickScores: [...SCORE_LEVELS],
+    reflectionVersion: REFLECTION_VERSION,
     initialized: true,
     schemaVersion: 2,
     collapsedGroupIds: [],
@@ -66,13 +36,24 @@ function createDefaultSettings(now = Date.now()): AppSettings {
 
 export async function initializeApp(): Promise<void> {
   const db = getDatabase();
-  await db.transaction("rw", [db.habits, db.settings], async () => {
+  await db.transaction("rw", [db.habits, db.habitGroups, db.settings, db.dailyRecords, db.habitScores], async () => {
     const settings = await db.settings.get("app-settings");
-    if (settings?.initialized) return;
-    if ((await db.habits.count()) === 0) {
-      await db.habits.bulkAdd(createDefaultHabits());
-    }
-    await db.settings.put(createDefaultSettings());
+    if (settings?.reflectionVersion === REFLECTION_VERSION) return;
+    const oldHabits = await db.habits.toArray();
+    const oldScores = await db.habitScores.toArray();
+    // Snapshot old checklists before archiving; never reinterpret historical scores.
+    await db.dailyRecords.toCollection().modify(record => {
+      record.habitIds ??= habitsForDay(oldHabits, undefined,
+        oldScores.filter(score => score.dateKey === record.dateKey).map(score => score.habitId)
+      ).map(habit => habit.id);
+    });
+    await db.habits.toCollection().modify({ archived: true, enabled: false });
+    await db.habitGroups.toCollection().modify({ archived: true });
+    await db.habits.bulkPut(createDefaultHabits());
+    await db.habitGroups.bulkPut(createReflectionGroups());
+    await db.settings.put({ ...createDefaultSettings(), ...settings,
+      initialized: true, reflectionVersion: REFLECTION_VERSION,
+      quickScores: [...SCORE_LEVELS], collapsedGroupIds: [], updatedAt: Date.now() });
   });
 }
 
@@ -133,15 +114,8 @@ async function recalculateRecord(
     db.habitScores.where("dateKey").equals(dateKey).toArray(),
     db.dailyRecords.get(dateKey),
   ]);
-  const activeHabits = habits.filter((habit) => habit.enabled && !habit.archived);
-  const activeIds = new Set(activeHabits.map((habit) => habit.id));
   const scoreByHabit = new Map(scores.map((score) => [score.habitId, score]));
-  const includedHabits = [
-    ...activeHabits,
-    ...habits.filter(
-      (habit) => !activeIds.has(habit.id) && scoreByHabit.has(habit.id),
-    ),
-  ];
+  const includedHabits = habitsForDay(habits, existing, scores.map(score => score.habitId));
   const items = includedHabits.map((habit) => ({
     score: scoreByHabit.get(habit.id)?.score ?? 0,
     maxScore: habit.maxScore,
@@ -156,6 +130,7 @@ async function recalculateRecord(
     id: dateKey,
     dateKey,
     note: existing?.note ?? "",
+    habitIds: includedHabits.map(habit => habit.id),
     ...summary,
     status: getRecordStatus(scoredCount, includedHabits.length),
     createdAt: existing?.createdAt ?? now,
@@ -179,7 +154,7 @@ export async function saveHabitScore(
     async () => {
       const habit = await db.habits.get(habitId);
       if (!habit) throw new Error("评分项目不存在");
-      if (score < 0 || score > habit.maxScore) {
+      if (!Number.isFinite(score) || (habit.scoreLabels && !SCORE_LEVELS.includes(score)) || score < 0 || score > habit.maxScore) {
         throw new Error(`评分必须在 0 到 ${habit.maxScore} 之间`);
       }
       const id = `${dateKey}:${habitId}`;
@@ -256,7 +231,8 @@ export async function saveHabit(
       input.sortOrderInGroup ??
       existing?.sortOrderInGroup ??
       groupSiblings.length,
-    maxScore: Number(input.maxScore ?? existing?.maxScore ?? 10),
+    scoreLabels: input.scoreLabels ?? existing?.scoreLabels,
+    maxScore: existing?.scoreLabels ? 10 : Number(input.maxScore ?? existing?.maxScore ?? 10),
     weight: Number(input.weight ?? existing?.weight ?? 1),
     sortOrder: existing?.sortOrder ?? habits.length,
     enabled: input.enabled ?? existing?.enabled ?? true,

@@ -80,6 +80,9 @@ export function validateBackup(value: unknown): AppBackup {
     ) {
       throw new Error("备份中的项目引用了不存在的分组");
     }
+    if (habit.scoreLabels !== undefined && (!Array.isArray(habit.scoreLabels) || habit.scoreLabels.length !== 4 || habit.scoreLabels.some(label => typeof label !== "string") || habit.maxScore !== 10)) {
+      throw new Error("备份中的评分标准无效");
+    }
     habitIds.add(habit.id);
   });
 
@@ -105,7 +108,7 @@ export function validateBackup(value: unknown): AppBackup {
   });
 
   (value.dailyRecords as Array<Record<string, unknown>>).forEach((record) => {
-    if (!isObject(record) || !isDateKey(record.dateKey)) {
+    if (!isObject(record) || !isDateKey(record.dateKey) || (record.habitIds !== undefined && (!Array.isArray(record.habitIds) || record.habitIds.some(id => typeof id !== "string" || !habitIds.has(id))))) {
       throw new Error("备份中的日期记录无效");
     }
   });

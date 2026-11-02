@@ -1,7 +1,7 @@
 {
-  "name": "每日评分",
-  "short_name": "每日评分",
-  "description": "只存本机、离线可用的每日评分打卡应用",
+  "name": "阶段反省评分表",
+  "short_name": "阶段反省评分表",
+  "description": "只存本机、离线可用的阶段反省评分表打卡应用",
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",
